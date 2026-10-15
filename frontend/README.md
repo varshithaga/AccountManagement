@@ -14,7 +14,9 @@ npm run dev                 # http://localhost:5173
 Start the backend first (`cd ../backend`, then `uvicorn app.main:app --reload`). The first account you
 sign up with becomes the administrator.
 
-Other scripts: `npm run build`, `npm run typecheck`, `npm run lint`.
+Other scripts: `npm run build`, `npm run typecheck`, `npm run lint`, `npm test` (Vitest - unit tests of the
+helpers and components rendered in jsdom; `npm run test:watch` re-runs them as you edit). Tests sit next to
+the code they test as `*.test.ts(x)`.
 
 ## Where things are
 
@@ -25,3 +27,6 @@ Other scripts: `npm run build`, `npm run typecheck`, `npm run lint`.
 | `src/components/` | Layout, shared UI (`tw/`), dropdowns, pagination, import/export dialogs |
 | `src/pages/<Page>/` | One folder per screen, each with its own `*api.ts` |
 | `src/pages/Billing/` | Clients, Suppliers, Products & Tax Rates, Sales Invoices, Purchase Bills, Payments & Receipts, Receivables & Payables |
+| `src/pages/Billing/documentPdf.ts` | Invoice / bill / credit note PDFs (download and print) |
+| `src/pages/GstSummary/`, `src/pages/AuditLog/` | GST Summary report, Audit Log |
+| `src/constants/indianStates.ts` | States with their GST codes (the state decides CGST + SGST or IGST) |

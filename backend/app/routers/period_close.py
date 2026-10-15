@@ -18,6 +18,15 @@ router = APIRouter(prefix="/api/period-close", tags=["period close"])
 view = Access("period_close")
 edit = Access("period_close", action=EDIT)
 
+COMPANY_FIELDS = {  # field: max length
+    "company_name": 200, "company_gstin": 15, "company_state": 100, "company_address": 2000,
+    "company_email": 254, "company_phone": 30,
+}
+
+
+def _company(settings) -> dict:
+    return {field.removeprefix("company_"): getattr(settings, field) or "" for field in COMPANY_FIELDS}
+
 
 def _as_of(value) -> Optional[date]:
     try:
@@ -39,7 +48,14 @@ def _state(db: Session) -> dict:
         "default_receivable_account": settings.default_receivable_account_id,
         "default_payable_account": settings.default_payable_account_id,
         "default_cash_account": settings.default_cash_account_id,
+        "company": _company(settings),
     }
+
+
+@router.get("/company/", dependencies=[Depends(Access())])
+def company(db: Session = Depends(get_db)):
+    """The company's name, GSTIN, state and contact details - printed on invoices (any signed-in user)."""
+    return _company(accounting_settings(db))
 
 
 @router.get("/", dependencies=[Depends(view)])
@@ -67,6 +83,16 @@ def update_settings(body: AccountingSettingsIn, db: Session = Depends(get_db)):
             if data[field] is not None and not db.get(SubCategory, data[field]):
                 raise field_error(field, f'Invalid pk "{data[field]}" - object does not exist.')
             setattr(settings, f"{field}_id", data[field])
+    for field, limit in COMPANY_FIELDS.items():
+        if field in data:
+            value = " ".join(str(data[field] or "").split()) if field != "company_address" else str(data[field] or "").strip()
+            if len(value) > limit:
+                raise field_error(field, f"Ensure this field has no more than {limit} characters.")
+            if field == "company_gstin":
+                value = value.upper()
+                if value and len(value) != 15:
+                    raise field_error(field, "A GSTIN has 15 characters.")
+            setattr(settings, field, value)
     db.commit()
     return _state(db)
 

@@ -6,6 +6,7 @@ import { periodCloseApi, apiError, type CloseReadiness, type PeriodCloseState } 
 import { Alert, Button, Chip, Modal, Panel, Select, Spinner, TextField } from '../../components/tw'
 import DatePicker2 from '../../components/DatePicker2'
 import { useAuth } from '../../context/AuthContext'
+import CompanyPanel from './CompanyPanel'
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => dayjs().month(i).format('MMMM'))
 const fmt = (d: string | null | undefined) => (d ? dayjs(d).format('DD MMM YYYY') : '—')
@@ -227,6 +228,8 @@ export default function PeriodClosePage() {
           </div>
 
           <div className="space-y-6">
+            <CompanyPanel company={state.company} canEdit={canEdit} onSaved={setState} />
+
             {/* FINANCIAL YEAR */}
             <Panel>
               <div className="mb-3 flex items-center gap-2">

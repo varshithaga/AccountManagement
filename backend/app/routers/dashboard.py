@@ -11,8 +11,9 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..deps import Access
 from ..models import (
-    BaiCode, BankAccount, BankStatement, Category, CategoryKeyword, DocumentStatus, JournalEntryLine,
-    PurchaseBill, SalesInvoice, SubCategory, Transaction, TransactionStatus,
+    BaiCode, BankAccount, BankStatement, Category, CategoryKeyword, Client, DocumentStatus, JournalEntryLine,
+    Payment, PaymentAllocation, Product, PurchaseBill, SalesInvoice, SubCategory, Supplier, TaxRate, Transaction,
+    TransactionStatus,
 )
 from ..services.continuity import get_continuity_summary
 from ..services.filters import (
@@ -371,4 +372,27 @@ def workflow_status(db: Session = Depends(get_db)):
                 Transaction.status == TransactionStatus.TRANSFER, and_(categorized, Transaction.confirmed.is_(True)))),
             "final": count(Transaction, Transaction.is_final.is_(True)),
         },
+        "sales": _sales_status(db, count),
+    }
+
+
+def _sales_status(db: Session, count) -> dict:
+    """Counts behind the Sales & Purchases steps of the Workflow page."""
+    open_states = [DocumentStatus.POSTED, DocumentStatus.PARTIALLY_PAID]
+    allocated = (select(func.coalesce(func.sum(PaymentAllocation.amount), 0))
+                 .where(PaymentAllocation.payment_id == Payment.id).scalar_subquery())
+    return {
+        "clients": count(Client, Client.is_active.is_(True)),
+        "suppliers": count(Supplier, Supplier.is_active.is_(True)),
+        "products": count(Product, Product.is_active.is_(True)),
+        "tax_rates": count(TaxRate, TaxRate.is_active.is_(True)),
+        "invoices": count(SalesInvoice, SalesInvoice.status != DocumentStatus.CANCELLED),
+        "draft_invoices": count(SalesInvoice, SalesInvoice.status == DocumentStatus.DRAFT),
+        "overdue_invoices": count(SalesInvoice, SalesInvoice.status.in_(open_states), SalesInvoice.due_date < today()),
+        "bills": count(PurchaseBill, PurchaseBill.status != DocumentStatus.CANCELLED),
+        "draft_bills": count(PurchaseBill, PurchaseBill.status == DocumentStatus.DRAFT),
+        "overdue_bills": count(PurchaseBill, PurchaseBill.status.in_(open_states), PurchaseBill.due_date < today()),
+        "payments": count(Payment),
+        # money received / paid that isn't applied to any invoice or bill yet
+        "unallocated_payments": count(Payment, Payment.amount > allocated),
     }

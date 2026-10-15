@@ -9,7 +9,8 @@ export type PageKey =
   | 'period_close'
   | 'clients' | 'suppliers' | 'products' | 'sales_invoices' | 'purchase_bills' | 'payments' | 'receivables_payables'
   | 'profit_and_loss' | 'balance_sheet' | 'cash_flow' | 'trial_balance' | 'account_ledger' | 'reports_comparison'
-  | 'user_management'
+  | 'gst_summary'
+  | 'user_management' | 'audit_log'
 
 export interface PageDef {
   key: PageKey
@@ -67,12 +68,14 @@ export const PAGE_GROUPS: { title: string; pages: PageDef[] }[] = [
       { key: 'trial_balance', label: 'Trial Balance', path: '/trial-balance' },
       { key: 'account_ledger', label: 'Account Ledger', path: '/account-ledger' },
       { key: 'reports_comparison', label: 'Period Comparison', path: '/reports/comparison' },
+      { key: 'gst_summary', label: 'GST Summary', path: '/gst-summary' },
     ],
   },
   {
     title: 'Administration',
     pages: [
       { key: 'user_management', label: 'User Management', path: '/users' },
+      { key: 'audit_log', label: 'Audit Log', path: '/audit-log' },
     ],
   },
 ]

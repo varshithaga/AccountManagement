@@ -14,6 +14,17 @@ export interface PeriodCloseState {
   history: BookClosing[]
   fiscal_year_start_month: number
   current_fiscal_year: { start: string; end: string }
+  /** Printed on invoices; company.state decides CGST + SGST vs IGST. */
+  company: Company
+}
+
+export interface Company {
+  name: string
+  gstin: string
+  state: string
+  address: string
+  email: string
+  phone: string
 }
 
 export interface CloseReadiness {
@@ -42,6 +53,10 @@ export const periodCloseApi = {
     (await axios.post(url('reopen/'), {}, { headers: await getAuthHeaders() })).data,
   setFiscalYearStart: async (month: number): Promise<PeriodCloseState> =>
     (await axios.put(url(), { fiscal_year_start_month: month }, { headers: await getAuthHeaders() })).data,
+  saveCompany: async (company: Company): Promise<PeriodCloseState> => {
+    const payload = Object.fromEntries(Object.entries(company).map(([k, v]) => [`company_${k}`, v]))
+    return (await axios.put(url(), payload, { headers: await getAuthHeaders() })).data
+  },
 }
 
 /** The first message of a DRF {"error": [...]} response, or the fallback. */

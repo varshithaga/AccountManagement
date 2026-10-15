@@ -12,6 +12,11 @@
     Payment to a supplier    Dr the supplier's payable account                   amount
                              Cr bank account's GL account (or Cash)             amount
 
+GST: when the client / supplier is in the company's own state (Accounting Settings -> company_state)
+the tax is CGST + SGST, half each; in another state it is IGST. Each component is posted to a
+sub-category named "Output CGST" / "Input IGST" etc. when the Chart of Accounts has one, else to
+the tax rate's own account.
+
 Invoices and bills start as DRAFT (editable, no journal entry). Posting creates the entry;
 cancelling deletes it again. A payment posts its entry when it's created and is split across
 invoices / bills by PaymentAllocation - whatever isn't allocated stays as an advance on the
@@ -21,7 +26,7 @@ as an imported journal entry.
 import re
 from collections import OrderedDict
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
 
 from sqlalchemy import exists, func, select
@@ -165,6 +170,78 @@ def build_items(db: Session, items: list, kind: str, model=None) -> tuple[list, 
 
 
 # ---------------------------------------------------------------------------
+# GST: CGST + SGST within the state, IGST across states
+# ---------------------------------------------------------------------------
+
+GST_COMPONENTS = (('cgst_amount', 'CGST'), ('sgst_amount', 'SGST'), ('igst_amount', 'IGST'))
+
+
+def _state_key(state: Optional[str]) -> str:
+    return ' '.join((state or '').split()).lower()
+
+
+def is_interstate(db: Session, party_state: Optional[str]) -> bool:
+    """True when the party is in another state than the company. Unknown on either side = same state."""
+    company, party = _state_key(accounting_settings(db).company_state), _state_key(party_state)
+    return bool(company and party and company != party)
+
+
+def split_gst(items, interstate: bool) -> None:
+    """Splits each item's tax_amount into its components: all IGST, or CGST + SGST (half each;
+    CGST takes the odd paisa)."""
+    for item in items:
+        tax = item.tax_amount or ZERO
+        if interstate:
+            item.cgst_amount, item.sgst_amount, item.igst_amount = ZERO, ZERO, tax
+        else:
+            half = (tax / 2).quantize(Decimal('0.01'), ROUND_HALF_UP)
+            item.cgst_amount, item.sgst_amount, item.igst_amount = half, tax - half, ZERO
+
+
+def apply_gst(db: Session, doc, party) -> None:
+    """Place of supply from the party, and the items' GST split to match."""
+    doc.place_of_supply = (party.state or '').strip()
+    doc.is_interstate = is_interstate(db, party.state)
+    split_gst(doc.items, doc.is_interstate)
+
+
+def _tax_lines(db: Session, item, number: str, side: str, fallback_account_id: int, debit: bool) -> list:
+    """The item's tax as journal lines, one per GST component and account. side: 'Output' (sales)
+    or 'Input' (purchases)."""
+    rate = db.get(TaxRate, item.tax_rate_id) if item.tax_rate_id else None
+    rate_name = rate.name if rate else 'GST'
+    parts = [(label, getattr(item, field) or ZERO) for field, label in GST_COMPONENTS]
+    if sum(a for _, a in parts) != item.tax_amount:  # not split (shouldn't happen) - one line
+        parts = [(None, item.tax_amount)]
+    by_account: OrderedDict = OrderedDict()
+    for label, amount in parts:
+        if not amount:
+            continue
+        named = _named_account(db, f'{side} {label}') if label else None
+        entry = by_account.setdefault(named.id if named else fallback_account_id, [ZERO, []])
+        entry[0] += amount
+        if label:
+            entry[1].append(label)
+    lines = []
+    for account_id, (amount, labels) in by_account.items():
+        description = f'{rate_name} ({" + ".join(labels)}) on {number}' if labels else f'{rate_name} on {number}'
+        lines.append((account_id, amount if debit else ZERO, ZERO if debit else amount, description))
+    return lines
+
+
+def _output_tax_account(db: Session, item) -> int:
+    rate = db.get(TaxRate, item.tax_rate_id) if item.tax_rate_id else None
+    account_id = rate.output_tax_account_id if rate else None
+    if not account_id:
+        fallback = _named_account(db, 'GST Payable')
+        if not fallback:
+            raise InvoicingError(f'Tax rate "{rate.name if rate else "?"}" has no output tax account - set one, or add '
+                                 'a "GST Payable" sub-category.')
+        account_id = fallback.id
+    return account_id
+
+
+# ---------------------------------------------------------------------------
 # Journal entries
 # ---------------------------------------------------------------------------
 
@@ -270,6 +347,7 @@ def save_sales_invoice(db: Session, data: dict, user: Optional[User], invoice: O
         items, subtotal, tax = build_items(db, data.get('items') or [], 'sale')
         invoice.items = items
         invoice.subtotal, invoice.tax_amount, invoice.total = subtotal, tax, subtotal + tax
+    apply_gst(db, invoice, client)
     db.flush()
     return invoice
 
@@ -280,18 +358,12 @@ def post_sales_invoice(db: Session, invoice: SalesInvoice) -> SalesInvoice:
     if invoice.total <= 0:
         raise InvoicingError('An invoice must total more than zero to be posted.')
     client = invoice.client
+    apply_gst(db, invoice, client)
     lines = [(_receivable_account_id(db, client), invoice.total, ZERO, f'Invoice {invoice.invoice_number}')]
     for item in invoice.items:
         lines.append((item.account_id, ZERO, item.amount, item.description))
         if item.tax_amount:
-            tax_account = item.tax_rate.output_tax_account_id if item.tax_rate else None
-            if not tax_account:
-                fallback = _named_account(db, 'GST Payable')
-                if not fallback:
-                    raise InvoicingError(f'Tax rate "{item.tax_rate.name}" has no output tax account - set one, or add '
-                                         'a "GST Payable" sub-category.')
-                tax_account = fallback.id
-            lines.append((tax_account, ZERO, item.tax_amount, f'{item.tax_rate.name} on {invoice.invoice_number}'))
+            lines += _tax_lines(db, item, invoice.invoice_number, 'Output', _output_tax_account(db, item), debit=False)
     entry = _post_entry(db, f'SI-{invoice.invoice_number}', invoice.invoice_date,
                         f'Sales invoice {invoice.invoice_number} - {client.name}', ORIGIN_SALES_INVOICE, lines)
     invoice.journal_entry_id = entry.id
@@ -358,6 +430,7 @@ def save_purchase_bill(db: Session, data: dict, user: Optional[User], bill: Opti
         items, subtotal, tax = build_items(db, data.get('items') or [], 'purchase')
         bill.items = items
         bill.subtotal, bill.tax_amount, bill.total = subtotal, tax, subtotal + tax
+    apply_gst(db, bill, supplier)
     db.flush()
     return bill
 
@@ -368,12 +441,13 @@ def post_purchase_bill(db: Session, bill: PurchaseBill) -> PurchaseBill:
     if bill.total <= 0:
         raise InvoicingError('A bill must total more than zero to be posted.')
     supplier = bill.supplier
+    apply_gst(db, bill, supplier)
     lines = []
     for item in bill.items:
         tax_account = item.tax_rate.input_tax_account_id if item.tax_rate else None
         if item.tax_amount and tax_account:
             lines.append((item.account_id, item.amount, ZERO, item.description))
-            lines.append((tax_account, item.tax_amount, ZERO, f'{item.tax_rate.name} on {bill.bill_number}'))
+            lines += _tax_lines(db, item, bill.bill_number, 'Input', tax_account, debit=True)
         else:
             # No input-credit account: the tax is part of the cost.
             lines.append((item.account_id, item.amount + item.tax_amount, ZERO, item.description))
@@ -731,6 +805,8 @@ def create_credit_note(db: Session, data: dict, user: Optional[User]) -> CreditN
                       subtotal=subtotal, tax_amount=tax, total=total, status=DocumentStatus.POSTED,
                       created_by_id=user.id if user else None)
     note.items = items
+    note.place_of_supply, note.is_interstate = doc.place_of_supply, doc.is_interstate
+    split_gst(items, doc.is_interstate)
     if kind == NoteKind.SALES:
         note.sales_invoice = doc
         party = doc.client
@@ -738,11 +814,7 @@ def create_credit_note(db: Session, data: dict, user: Optional[User]) -> CreditN
         for item in items:
             lines.append((item.account_id, item.amount, ZERO, item.description))
             if item.tax_amount:
-                tax_rate = db.get(TaxRate, item.tax_rate_id)
-                tax_account = tax_rate.output_tax_account_id or getattr(_named_account(db, 'GST Payable'), 'id', None)
-                if not tax_account:
-                    raise InvoicingError(f'Tax rate "{tax_rate.name}" has no output tax account.')
-                lines.append((tax_account, item.tax_amount, ZERO, f'{tax_rate.name} on {number}'))
+                lines += _tax_lines(db, item, number, 'Output', _output_tax_account(db, item), debit=True)
         lines.append((_receivable_account_id(db, party), ZERO, total, f'Credit note {number}'))
         narration = f'Credit note {number} on invoice {doc.invoice_number} - {party.name}'
     else:
@@ -754,7 +826,7 @@ def create_credit_note(db: Session, data: dict, user: Optional[User]) -> CreditN
             tax_account = tax_rate.input_tax_account_id if tax_rate else None
             if item.tax_amount and tax_account:
                 lines.append((item.account_id, ZERO, item.amount, item.description))
-                lines.append((tax_account, ZERO, item.tax_amount, f'{tax_rate.name} on {number}'))
+                lines += _tax_lines(db, item, number, 'Input', tax_account, debit=False)
             else:
                 lines.append((item.account_id, ZERO, item.amount + item.tax_amount, item.description))
         narration = f'Debit note {number} on bill {doc.bill_number} - {party.name}'

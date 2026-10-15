@@ -40,7 +40,9 @@ PAGES = [
     ("account_ledger", "Account Ledger"),
     ("reports_comparison", "Period Comparison"),
     ("receivables_payables", "Receivables & Payables"),
+    ("gst_summary", "GST Summary"),
     ("user_management", "User Management"),
+    ("audit_log", "Audit Log"),
 ]
 PAGE_KEYS = [key for key, _ in PAGES]
 
@@ -71,10 +73,11 @@ METHOD_ACTIONS = {"POST": CREATE, "PUT": EDIT, "PATCH": EDIT, "DELETE": DELETE}
 
 # Starter roles created on first run. Admin is fixed (full access); the others can be
 # edited or deleted on the User Management page.
-_ALL_BUT_USERS = [k for k in PAGE_KEYS if k != "user_management"]
+_ADMIN_ONLY = ("user_management", "audit_log")
+_ALL_BUT_USERS = [k for k in PAGE_KEYS if k not in _ADMIN_ONLY]
 DEFAULT_ROLES = [
     ("Admin", "Full access to every page, including User Management.", True, [], {}),
-    ("Accountant", "Everything except User Management.", False, _ALL_BUT_USERS,
+    ("Accountant", "Everything except User Management and the Audit Log.", False, _ALL_BUT_USERS,
      {k: list(v) for k, v in PAGE_ACTIONS.items() if k != "user_management"}),
     ("Bookkeeper", "Day-to-day bookkeeping: statements, ledger, journals, invoices, bills, payments and reconciliation.",
      False,
@@ -85,7 +88,7 @@ DEFAULT_ROLES = [
                                          "sales_invoices", "purchase_bills", "payments", "bank_reconciliation")}),
     ("Viewer", "Dashboard and financial reports only.", False,
      ["dashboard", "menu_guide", "profit_and_loss", "balance_sheet", "cash_flow", "trial_balance", "account_ledger",
-      "reports_comparison", "receivables_payables"], {}),
+      "reports_comparison", "receivables_payables", "gst_summary"], {}),
 ]
 
 

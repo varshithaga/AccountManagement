@@ -261,6 +261,20 @@ export interface WorkflowStatus {
     ready_to_finalize: number
     final: number
   }
+  sales: {
+    clients: number
+    suppliers: number
+    products: number
+    tax_rates: number
+    invoices: number
+    draft_invoices: number
+    overdue_invoices: number
+    bills: number
+    draft_bills: number
+    overdue_bills: number
+    payments: number
+    unallocated_payments: number
+  }
 }
 
 export const workflowApi = {

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { Contact, Truck, Plus, Pencil, Trash2, RefreshCw, FileText, Wallet, CheckCircle2, Download } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import Pagination, { DEFAULT_ROWS_PER_PAGE } from '../../components/Pagination'
-import { Alert, Button, DateField, Drawer, IconButton, Modal, Panel, Spinner, Switch, Tabs, TextField } from '../../components/tw'
+import { Alert, Button, DateField, Drawer, IconButton, Modal, Panel, Select, Spinner, Switch, Tabs, TextField } from '../../components/tw'
+import { stateFromGstin, stateOptions } from '../../constants/indianStates'
 import { EmptyState, KpiTile, PageHeader, RowAction, SearchBox } from '../../components/PageParts'
 import { formatMoney } from '../../utils/periods'
 import { exportToExcel } from '../../utils/excelExport'
@@ -296,10 +297,14 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
             onChange={(e) => setForm({ ...form, email: e.target.value })} />
           <TextField id="p-phone" label="Phone" value={form.phone}
             onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-          <TextField id="p-state" label="State (place of supply)" value={form.state}
-            onChange={(e) => setForm({ ...form, state: e.target.value })} />
+          <Select id="p-state" label="State (place of supply)" value={form.state}
+            onChange={(e) => setForm({ ...form, state: e.target.value })}>
+            <option value="">Not set</option>
+            {stateOptions(form.state).map((name) => <option key={name} value={name}>{name}</option>)}
+          </Select>
+          {/* The GSTIN's first two digits are the state code - fill the state in when it is still empty. */}
           <TextField id="p-gstin" label="GSTIN" placeholder="15 characters" value={form.gstin} inputClassName="num uppercase"
-            onChange={(e) => setForm({ ...form, gstin: e.target.value })} />
+            onChange={(e) => setForm({ ...form, gstin: e.target.value, state: form.state || stateFromGstin(e.target.value) })} />
           <TextField id="p-pan" label="PAN" value={form.pan} inputClassName="num uppercase"
             onChange={(e) => setForm({ ...form, pan: e.target.value })} />
           <TextField id="p-terms" label="Payment terms (days)" type="number" value={form.payment_terms_days} inputClassName="num"

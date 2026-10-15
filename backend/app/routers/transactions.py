@@ -15,7 +15,7 @@ from ..models import (
     BankStatement, CategorizationSource, Category, SubCategory, Transaction, TransactionStatus,
 )
 from ..schemas import IdsIn, TransactionIn
-from ..services import period_close
+from ..services import audit, period_close
 from ..services import reconciliation as recon
 from ..services.categorization import clean_description, create_rule_from_transaction, propagate_manual_match
 from ..services.posting import post_transactions, unpost_transactions
@@ -334,6 +334,9 @@ def bulk_delete(body: IdsIn, request: Request, db: Session = Depends(get_db)):
                     confirm_unmatch(request, {"confirm_unmatch": body.confirm_unmatch}))
     for t in deletable:
         db.delete(t)
+    if deletable:
+        audit.record(db, "DELETE", "Transaction", f"{len(deletable)} transactions",
+                     changes={"ids": [t.id for t in deletable][:200]})
     db.commit()
     return {"deleted": len(deletable), "skipped_final": len(requested) - len(deletable)}
 
@@ -368,6 +371,9 @@ def finalize(body: IdsIn, db: Session = Depends(get_db)):
         propagate_manual_match(db, t)  # same as confirming: teaches similar narrations
     # Final = in the books: post each one to the journal unless it is already matched to a journal line.
     posting = post_transactions(db, ready)
+    if ready:
+        audit.record(db, "FINALIZE", "Transaction", f"{len(ready)} transactions",
+                     changes={"ids": [t.id for t in ready][:200], "posting": posting})
     db.commit()
     return {"finalized": len(ready), "already_final": already_final, "not_ready": len(candidates) - len(ready),
             "posting": posting}
@@ -385,6 +391,9 @@ def post_to_books(body: IdsIn, db: Session = Depends(get_db)):
         where.append(Transaction.statement_id == body.statement)
     txns = db.scalars(select(Transaction).where(*where).order_by(Transaction.date, Transaction.id)).all()
     posting = post_transactions(db, txns)
+    if posting.get("posted"):
+        audit.record(db, "POST", "Transaction", f"{posting['posted']} transactions posted to the books",
+                     changes={"posting": posting})
     db.commit()
     return posting
 
@@ -403,5 +412,8 @@ def reopen(body: IdsIn, db: Session = Depends(get_db)):
     for t in txns:
         t.is_final = False
         t.finalized_at = None
+    if txns:
+        audit.record(db, "REOPEN", "Transaction", f"{len(txns)} transactions",
+                     changes={"ids": [t.id for t in txns][:200], "removed_from_books": unposted})
     db.commit()
     return {"reopened": len(txns), "removed_from_books": unposted}

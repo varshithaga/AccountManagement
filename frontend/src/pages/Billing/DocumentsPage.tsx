@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   FileText, ShoppingCart, Plus, Pencil, Trash2, RefreshCw, Send, Ban, Eye, AlertTriangle, Wallet, FilePen,
-  CheckCircle2, X, HandCoins, FileMinus,
+  CheckCircle2, X, HandCoins, FileMinus, Download, Printer,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import Pagination, { DEFAULT_ROWS_PER_PAGE } from '../../components/Pagination'
@@ -11,8 +11,9 @@ import { Alert, Button, DateField, Drawer, IconButton, Modal, Panel, Select, Spi
 import { EmptyState, KpiTile, PageHeader, RowAction, SearchBox } from '../../components/PageParts'
 import { formatMoney } from '../../utils/periods'
 import { withUnmatchConfirm } from '../../utils/reconcileConfirm'
-import { creditNotesApi, docsApi, errorText, productsApi, taxRatesApi } from './billingapi'
-import type { BillingDoc, DocKind, DocStatus, DocSummary, ItemPayload, Product, TaxRate } from './billingapi'
+import { companyApi, creditNotesApi, docsApi, errorText, productsApi, taxRatesApi } from './billingapi'
+import type { BillingDoc, Company, DocKind, DocStatus, DocSummary, ItemPayload, Product, TaxRate } from './billingapi'
+import { downloadDocumentPdf, noteToPrintable, printDocumentPdf, toPrintable } from './documentPdf'
 import {
   AccountSelect, Field, PartySelect, StatusChip, TABLE_HEAD_ROW, TABLE_ROW, TD, TH, formatDate, isOverdue, todayIso,
 } from './billingParts'
@@ -261,6 +262,26 @@ function DocDrawer({ kind, id, onClose, onEdit, onPost, onCancel, onPay, onChang
   const [doc, setDoc] = useState<BillingDoc | null>(null)
   const [error, setError] = useState('')
   const [noting, setNoting] = useState(false)
+  // Printed on every PDF; loaded up front so Print can open its tab straight from the click.
+  const [company, setCompany] = useState<Company | null>(null)
+  useEffect(() => { companyApi.get().then(setCompany).catch(() => setCompany(null)) }, [])
+  const noCompany: Company = { name: '', gstin: '', state: '', address: '', email: '', phone: '' }
+
+  const pdf = async (print: boolean) => {
+    if (!doc) return
+    try {
+      await (print ? printDocumentPdf : downloadDocumentPdf)(toPrintable(kind, doc), company ?? noCompany)
+    } catch {
+      alert('Failed to make the PDF.')
+    }
+  }
+  const notePdf = async (noteId: number) => {
+    try {
+      await downloadDocumentPdf(noteToPrintable(await creditNotesApi.get(noteId)), company ?? noCompany)
+    } catch (err) {
+      alert(errorText(err, 'Failed to make the PDF.'))
+    }
+  }
 
   const cancelNote = async (noteId: number, number: string) => {
     if (!window.confirm(`Cancel ${number}? Its journal entry is removed and the amount goes back onto the ${text.single}.`)) return
@@ -299,6 +320,10 @@ function DocDrawer({ kind, id, onClose, onEdit, onPost, onCancel, onPay, onChang
             <Field label="Date">{formatDate(docDate(doc))}</Field>
             <Field label="Due">{formatDate(doc.due_date)}</Field>
             <Field label="Created by">{doc.created_by ?? '—'}</Field>
+            <Field label="Place of supply">
+              {doc.place_of_supply || '—'}
+              <span className="block text-xs font-normal text-muted">{doc.is_interstate ? 'Other state · IGST' : 'Same state · CGST + SGST'}</span>
+            </Field>
           </div>
 
           <table className="w-full border-collapse text-sm">
@@ -329,7 +354,12 @@ function DocDrawer({ kind, id, onClose, onEdit, onPost, onCancel, onPay, onChang
 
           <div className="ml-auto flex w-full max-w-xs flex-col gap-1.5 text-sm">
             <Row label="Subtotal" value={formatMoney(doc.subtotal)} />
-            <Row label="GST" value={formatMoney(doc.tax_amount)} />
+            {doc.is_interstate
+              ? <Row label="IGST" value={formatMoney(doc.igst_amount ?? doc.tax_amount)} />
+              : <>
+                <Row label="CGST" value={formatMoney(doc.cgst_amount)} />
+                <Row label="SGST" value={formatMoney(doc.sgst_amount)} />
+              </>}
             <Row label="Total" value={formatMoney(doc.total)} strong />
             <Row label="Paid" value={formatMoney(doc.amount_paid)} />
             {Number(doc.amount_credited) > 0 && <Row label={kind === 'sales' ? 'Credited' : 'Debit notes'} value={formatMoney(doc.amount_credited)} />}
@@ -349,6 +379,10 @@ function DocDrawer({ kind, id, onClose, onEdit, onPost, onCancel, onPay, onChang
                   </span>
                   <span className="flex items-center gap-2">
                     <span className="num">{formatMoney(n.total)}</span>
+                    <button type="button" title="Download PDF" onClick={() => notePdf(n.id)}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface-muted hover:text-ink">
+                      <Download className="h-4 w-4" />
+                    </button>
                     {n.status === 'POSTED' && canEdit && (
                       <button type="button" title="Cancel note" onClick={() => cancelNote(n.id, n.note_number)}
                         className="flex h-7 w-7 items-center justify-center rounded-lg text-danger-text hover:bg-danger-soft">
@@ -374,6 +408,8 @@ function DocDrawer({ kind, id, onClose, onEdit, onPost, onCancel, onPay, onChang
           )}
 
           <div className="flex flex-wrap gap-2 border-t border-border-soft pt-4">
+            <Button variant="outlined" icon={<Download />} onClick={() => pdf(false)}>PDF</Button>
+            <Button variant="outlined" icon={<Printer />} onClick={() => pdf(true)}>Print</Button>
             {doc.status === 'DRAFT' && canEdit && <>
               <Button variant="outlined" icon={<Pencil />} onClick={() => onEdit(doc)}>Edit</Button>
               <Button variant="contained" icon={<Send />} onClick={async () => { await onPost(doc); reload() }}>Post</Button>

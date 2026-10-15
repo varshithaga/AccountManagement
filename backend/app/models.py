@@ -22,6 +22,7 @@ from sqlalchemy import (
     Text,
     TypeDecorator,
     UniqueConstraint,
+    false,
     func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -327,6 +328,14 @@ class AccountingSettings(Base):
         ForeignKey("sub_categories.id", ondelete="SET NULL")
     )
     default_cash_account_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sub_categories.id", ondelete="SET NULL"))
+    # The company itself - printed on invoices. company_state decides GST: a client / supplier
+    # in the same state is charged CGST + SGST, one in another state IGST.
+    company_name: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    company_gstin: Mapped[str] = mapped_column(String(15), default="", server_default="")
+    company_state: Mapped[str] = mapped_column(String(100), default="", server_default="")
+    company_address: Mapped[str] = mapped_column(Text, default="", server_default="")
+    company_email: Mapped[str] = mapped_column(String(254), default="", server_default="")
+    company_phone: Mapped[str] = mapped_column(String(30), default="", server_default="")
 
 
 # ---------------------------------------------------------------------------
@@ -623,6 +632,10 @@ class SalesInvoice(Base):
     # Reduced by posted credit notes
     amount_credited: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default="0")
     status: Mapped[DocumentStatus] = mapped_column(str_enum(DocumentStatus), default=DocumentStatus.DRAFT)
+    # GST: the party's state when the document was saved, and whether it is another state than
+    # the company's (IGST) or the same one (CGST + SGST).
+    place_of_supply: Mapped[str] = mapped_column(String(100), default="", server_default="")
+    is_interstate: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     notes: Mapped[str] = mapped_column(Text, default="")
     journal_entry_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("journal_entries.id", ondelete="SET NULL"), unique=True
@@ -661,6 +674,9 @@ class SalesInvoiceItem(Base):
     tax_rate_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tax_rates.id", ondelete="RESTRICT"))
     amount: Mapped[Decimal] = mapped_column(Money)                            # quantity x price - discount
     tax_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
+    cgst_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default="0")
+    sgst_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default="0")
+    igst_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default="0")
     # Income account this line is credited to
     account_id: Mapped[int] = mapped_column(ForeignKey("sub_categories.id", ondelete="RESTRICT"))
 
@@ -696,6 +712,10 @@ class PurchaseBill(Base):
     # Reduced by posted debit notes
     amount_credited: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default="0")
     status: Mapped[DocumentStatus] = mapped_column(str_enum(DocumentStatus), default=DocumentStatus.DRAFT)
+    # GST: the party's state when the document was saved, and whether it is another state than
+    # the company's (IGST) or the same one (CGST + SGST).
+    place_of_supply: Mapped[str] = mapped_column(String(100), default="", server_default="")
+    is_interstate: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     notes: Mapped[str] = mapped_column(Text, default="")
     file_path: Mapped[Optional[str]] = mapped_column(String(500))  # scanned copy of the bill
     journal_entry_id: Mapped[Optional[int]] = mapped_column(
@@ -735,6 +755,9 @@ class PurchaseBillItem(Base):
     tax_rate_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tax_rates.id", ondelete="RESTRICT"))
     amount: Mapped[Decimal] = mapped_column(Money)
     tax_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
+    cgst_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default="0")
+    sgst_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default="0")
+    igst_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default="0")
     # Expense (or asset) account this line is debited to
     account_id: Mapped[int] = mapped_column(ForeignKey("sub_categories.id", ondelete="RESTRICT"))
 
@@ -773,6 +796,10 @@ class CreditNote(Base):
     total: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
     # POSTED or CANCELLED
     status: Mapped[DocumentStatus] = mapped_column(str_enum(DocumentStatus), default=DocumentStatus.POSTED)
+    # GST: the party's state when the document was saved, and whether it is another state than
+    # the company's (IGST) or the same one (CGST + SGST).
+    place_of_supply: Mapped[str] = mapped_column(String(100), default="", server_default="")
+    is_interstate: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     journal_entry_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("journal_entries.id", ondelete="SET NULL"), unique=True
     )
@@ -805,6 +832,9 @@ class CreditNoteItem(Base):
     tax_rate_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tax_rates.id", ondelete="RESTRICT"))
     amount: Mapped[Decimal] = mapped_column(Money)
     tax_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
+    cgst_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default="0")
+    sgst_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default="0")
+    igst_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default="0")
     account_id: Mapped[int] = mapped_column(ForeignKey("sub_categories.id", ondelete="RESTRICT"))
 
     note: Mapped[CreditNote] = relationship(back_populates="items")
@@ -958,3 +988,29 @@ class BookClosing(Base):
     note: Mapped[str] = mapped_column(String(500), default="")
 
     closed_by: Mapped[Optional[User]] = relationship()
+
+
+# ---------------------------------------------------------------------------
+# Audit log
+# ---------------------------------------------------------------------------
+
+class AuditLog(Base):
+    """
+    Who changed what, and when. Written automatically for the business records (invoices, bills,
+    payments, journal entries, chart of accounts, users, settings, ...) whenever they are
+    created, changed or deleted, plus sign-ins and bulk actions. Never edited.
+    """
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    username: Mapped[str] = mapped_column(String(150), default="")  # kept when the user is deleted
+    action: Mapped[str] = mapped_column(String(20), index=True)      # CREATE, UPDATE, DELETE, POST, CANCEL, LOGIN, ...
+    entity: Mapped[str] = mapped_column(String(50), index=True)      # e.g. "SalesInvoice"
+    entity_id: Mapped[Optional[int]] = mapped_column(Integer)
+    label: Mapped[str] = mapped_column(String(200), default="")      # e.g. "INV-00012"
+    # UPDATE: {field: [old, new]}; CREATE / DELETE: the record's fields; others: free-form
+    changes: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
+
+    user: Mapped[Optional[User]] = relationship()

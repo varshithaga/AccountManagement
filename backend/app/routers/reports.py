@@ -14,6 +14,7 @@ from ..database import get_db
 from ..deps import Access
 from ..errors import APIError, bad_request, forbidden
 from ..models import JournalEntryLine, User
+from ..services.gst import gst_summary
 from ..services.invoicing import aging_report
 from ..services.reports import (
     AccountNotFound, build_account_ledger, build_balance_sheet, build_cash_flow, build_profit_and_loss,
@@ -211,3 +212,32 @@ def receivables_aging(as_of: Optional[str] = None, db: Session = Depends(get_db)
 def payables_aging(as_of: Optional[str] = None, db: Session = Depends(get_db)):
     """What is owed to each supplier, by days past due, as of ?as_of= (default today)."""
     return aging_report(db, "payables", parse_date(as_of))
+
+
+@router.get("/gst-summary/", dependencies=[Depends(Access("gst_summary"))])
+def gst_summary_report(request: Request, db: Session = Depends(get_db), format: Optional[str] = None):
+    """Output GST, input tax credit and the net payable for the period, split CGST / SGST / IGST,
+    with rate-wise, B2B / B2C and HSN summaries and the documents behind them. ?format=csv exports."""
+    period, date_from, date_to = _period(db, request)
+    report = gst_summary(db, date_from, date_to)
+    report["period"] = period
+    if format == "csv":
+        tax_cols = lambda r: [r["taxable"], r["cgst"], r["sgst"], r["igst"], r["tax"]]
+        rows = [["GST Summary", date_from or "", date_to or ""], [],
+                ["Section", "Rate", "Taxable value", "CGST", "SGST", "IGST", "Total tax"]]
+        rows += [["Outward supplies", r["name"], *tax_cols(r)] for r in report["outward"]["by_rate"]]
+        rows += [["Outward supplies TOTAL", "", *tax_cols(report["outward"])]]
+        rows += [["Inward supplies", r["name"], *tax_cols(r)] for r in report["inward"]["by_rate"]]
+        rows += [["Inward supplies TOTAL", "", *tax_cols(report["inward"])],
+                 ["Input tax credit", "", *tax_cols(report["input_tax_credit"])],
+                 ["Ineligible input tax", "", "", "", "", "", report["ineligible_input_tax"]],
+                 ["Net payable", "", "", report["net_payable"]["cgst"], report["net_payable"]["sgst"],
+                  report["net_payable"]["igst"], report["net_payable"]["total"]], [],
+                 ["HSN / SAC", "Unit", "Quantity", "Taxable value", "CGST", "SGST", "IGST", "Total tax"]]
+        rows += [[r["hsn_sac_code"] or "(none)", r["unit"], r["quantity"], *tax_cols(r)] for r in report["hsn_summary"]]
+        rows += [[], ["Type", "Number", "Date", "Party", "GSTIN", "Place of supply", "Taxable value", "CGST", "SGST",
+                      "IGST", "Total tax", "Total"]]
+        rows += [[d["kind"], d["number"], d["date"], d["party"], d["gstin"], d["place_of_supply"], *tax_cols(d), d["total"]]
+                 for d in report["documents"]]
+        return _csv(f"gst_summary_{period}.csv", rows)
+    return report

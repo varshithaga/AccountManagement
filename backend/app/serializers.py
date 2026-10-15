@@ -408,8 +408,23 @@ def _item(i) -> dict:
         'tax_rate': i.tax_rate_id, 'tax_rate_name': i.tax_rate.name if i.tax_rate else None,
         'tax_percent': money(i.tax_rate.rate) if i.tax_rate else None,
         'amount': money(i.amount), 'tax_amount': money(i.tax_amount), 'line_total': money(i.amount + i.tax_amount),
+        'cgst_amount': money(i.cgst_amount), 'sgst_amount': money(i.sgst_amount), 'igst_amount': money(i.igst_amount),
+        'hsn_sac_code': i.product.hsn_sac_code if i.product else '', 'unit': i.product.unit if i.product else '',
         'account': i.account_id, 'account_name': i.account.name,
     }
+
+
+def _gst(doc) -> dict:
+    """Place of supply and the document's tax split into CGST / SGST / IGST."""
+    total = lambda field: money(sum((getattr(i, field) or Decimal('0') for i in doc.items), Decimal('0')))
+    return {'place_of_supply': doc.place_of_supply, 'is_interstate': doc.is_interstate,
+            'cgst_amount': total('cgst_amount'), 'sgst_amount': total('sgst_amount'), 'igst_amount': total('igst_amount')}
+
+
+def _print_party(party, address: str) -> dict:
+    """What an invoice / bill prints about the client or supplier."""
+    return {'name': party.name, 'gstin': party.gstin or '', 'pan': party.pan, 'address': address, 'state': party.state,
+            'email': party.email, 'phone': party.phone, 'contact_person': party.contact_person}
 
 
 def _allocation(a) -> dict:
@@ -429,7 +444,9 @@ def credit_note(n) -> dict:
         'tax_amount': money(n.tax_amount), 'total': money(n.total), 'status': _v(n.status),
         'journal_entry': n.journal_entry_id,
         'journal_entry_number': n.journal_entry.entry_number if n.journal_entry else None,
-        'items': [_item(i) for i in n.items],
+        'items': [_item(i) for i in n.items], **_gst(n),
+        'party': _print_party(doc.client, doc.client.billing_address) if n.sales_invoice
+        else _print_party(doc.supplier, doc.supplier.address),
         'created_by': n.created_by.username if n.created_by else None, 'created_at': iso(n.created_at),
     }
 
@@ -454,6 +471,10 @@ def sales_invoice(inv: SalesInvoice, detail: bool = True) -> dict:
         data['items'] = [_item(i) for i in inv.items]
         data['payments'] = [_allocation(a) for a in inv.allocations]
         data['credit_notes'] = [_note_summary(n) for n in inv.credit_notes]
+        data['party'] = _print_party(inv.client, inv.client.billing_address)
+        data.update(_gst(inv))
+    else:
+        data.update(place_of_supply=inv.place_of_supply, is_interstate=inv.is_interstate)
     return data
 
 
@@ -472,6 +493,10 @@ def purchase_bill(bill: PurchaseBill, detail: bool = True) -> dict:
         data['items'] = [_item(i) for i in bill.items]
         data['payments'] = [_allocation(a) for a in bill.allocations]
         data['credit_notes'] = [_note_summary(n) for n in bill.credit_notes]
+        data['party'] = _print_party(bill.supplier, bill.supplier.address)
+        data.update(_gst(bill))
+    else:
+        data.update(place_of_supply=bill.place_of_supply, is_interstate=bill.is_interstate)
     return data
 
 
