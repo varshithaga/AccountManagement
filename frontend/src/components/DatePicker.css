@@ -1,0 +1,208 @@
+/* Modern Custom Flatpickr Calendar Styling - Matching User Reference Design */
+
+.flatpickr-calendar {
+  background: #f8fafc !important;
+  border-radius: 24px !important;
+  padding: 16px !important;
+  border: 1px solid rgba(226, 232, 240, 0.9) !important;
+  box-shadow: 0 20px 40px -10px rgba(15, 23, 42, 0.16), 0 8px 16px -4px rgba(15, 23, 42, 0.08) !important;
+  width: 320px !important;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  box-sizing: border-box !important;
+}
+
+.flatpickr-calendar::before,
+.flatpickr-calendar::after {
+  display: none !important;
+}
+
+/* 1. Header Navigation */
+.flatpickr-months {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  margin-bottom: 12px !important;
+  position: relative !important;
+  height: 40px !important;
+}
+
+.flatpickr-prev-month,
+.flatpickr-next-month {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  background: #ffffff !important;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08) !important;
+  border: 1px solid #e2e8f0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  position: relative !important;
+  top: 0 !important;
+  padding: 0 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  z-index: 5 !important;
+}
+
+.flatpickr-prev-month:hover,
+.flatpickr-next-month:hover {
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.12) !important;
+  transform: translateY(-1px) !important;
+}
+
+.flatpickr-prev-month svg,
+.flatpickr-next-month svg {
+  width: 14px !important;
+  height: 14px !important;
+  fill: #1e293b !important;
+}
+
+.flatpickr-month {
+  height: 40px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.flatpickr-current-month {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  color: #0f172a !important;
+  padding: 0 !important;
+  position: static !important;
+  width: auto !important;
+}
+
+.flatpickr-current-month .flatpickr-monthDropdown-months {
+  background: #ffffff !important;
+  border-radius: 12px !important;
+  padding: 6px 14px !important;
+  border: 1px solid #e2e8f0 !important;
+  font-weight: 800 !important;
+  font-size: 15px !important;
+  color: #0f172a !important;
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.05) !important;
+  cursor: pointer !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='%232563eb' viewBox='0 0 24 24'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 6px center !important;
+  background-size: 18px !important;
+  padding-right: 24px !important;
+}
+
+.flatpickr-current-month .numInputWrapper {
+  width: auto !important;
+}
+
+.flatpickr-current-month input.cur-year {
+  background: #ffffff !important;
+  border-radius: 12px !important;
+  padding: 6px 12px !important;
+  border: 1px solid #e2e8f0 !important;
+  font-weight: 800 !important;
+  font-size: 15px !important;
+  color: #0f172a !important;
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.05) !important;
+  width: 76px !important;
+}
+
+/* 2. Days of Week */
+.flatpickr-weekdays {
+  height: 36px !important;
+  align-items: center !important;
+  margin-bottom: 4px !important;
+}
+
+span.flatpickr-weekday {
+  color: #334155 !important;
+  font-weight: 800 !important;
+  font-size: 13px !important;
+  text-transform: capitalize !important;
+}
+
+/* 3. Days Container & Grid */
+.flatpickr-days {
+  width: 100% !important;
+}
+
+.dayContainer {
+  width: 100% !important;
+  min-width: 100% !important;
+  max-width: 100% !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: space-between !important;
+}
+
+.flatpickr-day {
+  background: #ffffff !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(226, 232, 240, 0.8) !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04) !important;
+  color: #1e293b !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+  height: 38px !important;
+  line-height: 36px !important;
+  max-width: 38px !important;
+  flex-basis: 38px !important;
+  margin: 3px 1px !important;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.flatpickr-day.prevMonthDay,
+.flatpickr-day.nextMonthDay {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  color: #cbd5e1 !important;
+  font-weight: 500 !important;
+}
+
+.flatpickr-day:hover {
+  background: #eff6ff !important;
+  border-color: #93c5fd !important;
+  color: #1d4ed8 !important;
+  transform: scale(1.04) !important;
+}
+
+/* Selected Date Styling - Vibrant Blue Card */
+.flatpickr-day.selected,
+.flatpickr-day.startRange,
+.flatpickr-day.endRange,
+.flatpickr-day.selected:hover {
+  background: #2563eb !important;
+  border-color: #2563eb !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  border-radius: 10px !important;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4) !important;
+}
+
+.flatpickr-day.today {
+  border: 2px solid #2563eb !important;
+  color: #2563eb !important;
+  font-weight: 800 !important;
+}
+
+.flatpickr-day.today.selected {
+  color: #ffffff !important;
+}
+
+.flatpickr-day.flatpickr-disabled,
+.flatpickr-day.flatpickr-disabled:hover {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: #e2e8f0 !important;
+  box-shadow: none !important;
+  cursor: not-allowed !important;
+}

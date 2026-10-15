@@ -1,0 +1,351 @@
+@import "tailwindcss";
+
+/* The app toggles `dark-mode` on <body> (see ThemeModeContext), not the
+   conventional `dark` class on <html>, so point Tailwind's dark: variant at it. */
+@custom-variant dark (&:where(.dark-mode, .dark-mode *));
+
+/* ============================================================================================
+   "Navy & Saffron" design tokens - the one place colours are defined.
+   Components use them through the Tailwind names mapped below (bg-surface, text-muted,
+   bg-primary, text-success-text, ...). The violet / slate / emerald / rose / amber / orange
+   scales are re-tuned to the same palette, so screens not yet moved to the token names
+   follow along.
+   ============================================================================================ */
+:root {
+  --sidebar-bg: #0A1A3A;
+  --sidebar-raised: #102551;
+  --sidebar-active: #1B3672;
+  --sidebar-text: #CAD6EE;
+  --sidebar-label: #8EA2CC;
+  --highlight: #FFC24B;
+
+  --primary: #2453E0;
+  --primary-hover: #1A3EB0;
+  --primary-soft: #E7EEFF;
+  --primary-border: #C3D3FF;
+
+  --bg: #F4F5FA;
+  --surface: #FFFFFF;
+  --surface-muted: #F7F8FC;
+  --border: #E6E8F0;
+  --border-soft: #EEF0F6;
+  --input-border: #D5D8E4;
+  --text: #12152B;
+  --text-muted: #5A6178;
+
+  --success: #12A877;  --success-text: #0B7A55;  --success-soft: #E6F7F0;
+  --danger: #E5484D;   --danger-text: #B4173A;   --danger-soft: #FDECEF;  --danger-border: #F3C2CC;
+  --warning: #D9480F;  --warning-text: #B03A08;  --warning-soft: #FFF1E8;
+  --caution: #E0A100;  --caution-text: #8A5A00;  --caution-soft: #FFF6DB;
+  --info: #0EA5A4;     --info-text: #0F766E;     --info-soft: #E0F5F3;
+  --equity: #7B61FF;   --equity-text: #5B3FE0;   --equity-soft: #EEEBFF;
+
+  /* Light-on-navy accents for the dark "hero" KPI card. */
+  --mint: #5EE6B5;
+}
+
+:root[data-theme='dark'],
+body.dark-mode {
+  --bg: #0B1220;
+  --surface: #121A2E;
+  --surface-muted: #17213A;
+  --border: #22304F;
+  --border-soft: #1C2742;
+  --input-border: #2B3A5C;
+  --text: #E6ECF8;
+  --text-muted: #9AA8C7;
+  --primary: #5B82FF;
+  --primary-hover: #7C9BFF;
+  --primary-soft: #1B2A55;
+  --primary-border: #2E4485;
+
+  --success-text: #4FDDAA;  --success-soft: color-mix(in srgb, var(--success) 15%, transparent);
+  --danger-text: #FF8C9B;   --danger-soft: color-mix(in srgb, var(--danger) 15%, transparent);  --danger-border: #6B2A3A;
+  --warning-text: #FF9F6E;  --warning-soft: color-mix(in srgb, var(--warning) 15%, transparent);
+  --caution-text: #F5C75A;  --caution-soft: color-mix(in srgb, var(--caution) 15%, transparent);
+  --info-text: #4FD6D4;     --info-soft: color-mix(in srgb, var(--info) 15%, transparent);
+  --equity-text: #A897FF;   --equity-soft: color-mix(in srgb, var(--equity) 15%, transparent);
+
+  /* Dark surfaces for the screens still drawn with the slate scale. */
+  --color-slate-800: #17213A;
+  --color-slate-900: #121A2E;
+  --color-slate-950: #0B1220;
+}
+
+@theme inline {
+  --color-sidebar: var(--sidebar-bg);
+  --color-sidebar-raised: var(--sidebar-raised);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-text: var(--sidebar-text);
+  --color-sidebar-label: var(--sidebar-label);
+  --color-highlight: var(--highlight);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-border: var(--primary-border);
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-border-soft: var(--border-soft);
+  --color-input: var(--input-border);
+  --color-ink: var(--text);
+  --color-muted: var(--text-muted);
+
+  --color-success: var(--success);
+  --color-success-text: var(--success-text);
+  --color-success-soft: var(--success-soft);
+  --color-danger: var(--danger);
+  --color-danger-text: var(--danger-text);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-border: var(--danger-border);
+  --color-warning: var(--warning);
+  --color-warning-text: var(--warning-text);
+  --color-warning-soft: var(--warning-soft);
+  --color-caution: var(--caution);
+  --color-caution-text: var(--caution-text);
+  --color-caution-soft: var(--caution-soft);
+  --color-info: var(--info);
+  --color-info-text: var(--info-text);
+  --color-info-soft: var(--info-soft);
+  --color-equity: var(--equity);
+  --color-equity-text: var(--equity-text);
+  --color-equity-soft: var(--equity-soft);
+  --color-mint: var(--mint);
+}
+
+@theme {
+  --font-sans: 'DM Sans', ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Sora', 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+
+  /* Violet is the brand colour across the existing screens - now the primary blue. */
+  --color-violet-50: #F1F5FF;
+  --color-violet-100: #E7EEFF;
+  --color-violet-200: #C3D3FF;
+  --color-violet-300: #9DB5FF;
+  --color-violet-400: #7C9BFF;
+  --color-violet-500: #5B82FF;
+  --color-violet-600: #2453E0;
+  --color-violet-700: #1A3EB0;
+  --color-violet-800: #16348F;
+  --color-violet-900: #142C72;
+  --color-violet-950: #0A1A3A;
+
+  /* Indigo / fuchsia accents read as the same primary family. */
+  --color-indigo-50: #F1F5FF;
+  --color-indigo-100: #E7EEFF;
+  --color-indigo-200: #C3D3FF;
+  --color-indigo-300: #9DB5FF;
+  --color-indigo-400: #7C9BFF;
+  --color-indigo-500: #2453E0;
+  --color-indigo-600: #2453E0;
+  --color-indigo-700: #1A3EB0;
+
+  /* Neutrals - navy-tinted greys. */
+  --color-slate-50: #F7F8FC;
+  --color-slate-100: #EEF0F6;
+  --color-slate-200: #E6E8F0;
+  --color-slate-300: #D5D8E4;
+  --color-slate-400: #8A91A8;
+  --color-slate-500: #5A6178;
+  --color-slate-600: #474E66;
+  --color-slate-700: #343A52;
+  --color-slate-800: #22273F;
+  --color-slate-900: #12152B;
+  --color-slate-950: #0A0D1C;
+
+  /* Status scales. */
+  --color-emerald-50: #E6F7F0;
+  --color-emerald-100: #CCF0E2;
+  --color-emerald-200: #9FE2C8;
+  --color-emerald-300: #5EE6B5;
+  --color-emerald-400: #2FC892;
+  --color-emerald-500: #12A877;
+  --color-emerald-600: #0E9167;
+  --color-emerald-700: #0B7A55;
+
+  --color-rose-50: #FDECEF;
+  --color-rose-100: #FBDCE2;
+  --color-rose-200: #F3C2CC;
+  --color-rose-300: #F09AA8;
+  --color-rose-400: #EC6F7E;
+  --color-rose-500: #E5484D;
+  --color-rose-600: #CF2F48;
+  --color-rose-700: #B4173A;
+
+  --color-orange-50: #FFF1E8;
+  --color-orange-100: #FFE2D0;
+  --color-orange-500: #E8590C;
+  --color-orange-600: #D9480F;
+  --color-orange-700: #B03A08;
+
+  --color-amber-50: #FFF6DB;
+  --color-amber-100: #FFEDB8;
+  --color-amber-200: #FBDD8A;
+  --color-amber-300: #F5C75A;
+  --color-amber-400: #F0B429;
+  --color-amber-500: #E0A100;
+  --color-amber-600: #B07A00;
+  --color-amber-700: #8A5A00;
+
+  --shadow-card: none;
+  --shadow-lift: 0 12px 32px -16px rgb(10 26 58 / 0.28);
+
+  --animate-fade-up: fade-up 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+  --animate-float: float 6s ease-in-out infinite;
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* ---------------------------------------------------------------- typography */
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* Money, counts, percentages, codes: monospaced figures that line up. */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+table, .tabular-nums, input[type='number'] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Page titles. */
+main h1 {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Card titles. */
+main h2 {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+main h2.text-base {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+/* Section labels: table headers. */
+main thead th {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+/* Right-aligned cells hold amounts and counts. */
+main td.text-right {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- surfaces */
+
+/* Cards: flat white with a hairline border - no heavy shadows. */
+main [class~='rounded-2xl'][class~='border'][class~='bg-white'] {
+  border-radius: 18px;
+}
+
+/* Slim scrollbars inside the app. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(138 145 168 / 0.45) transparent;
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* The workspace behind the pages. */
+.app-backdrop {
+  background: var(--bg);
+}
+
+/* The navy navigation rail (also the landing-page hero). */
+.nav-rail {
+  background: var(--sidebar-bg);
+}
+
+.grid-fade {
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.05) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Date-picker calendar on phones: a sheet over a dimmed page (see components/calendarPosition.ts).
+   The backdrop lets taps through, so tapping outside still closes the calendar. */
+.calendar-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(10, 26, 58, 0.45);
+  pointer-events: none;
+}
+
+.flatpickr-calendar.calendar-sheet {
+  box-shadow: 0 -8px 40px -8px rgba(10, 26, 58, 0.35) !important;
+}
+
+.flatpickr-calendar .dayContainer,
+.flatpickr-calendar .flatpickr-days {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}

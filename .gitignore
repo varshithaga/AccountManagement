@@ -1,0 +1,72 @@
+# =========================
+# Environment / secrets
+# =========================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# =========================
+# Backend (Python)
+# =========================
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Bytecode / caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Packaging
+build/
+*.egg-info/
+.eggs/
+
+# App data
+backend/uploads/
+chroma_db/
+*.sqlite3
+*.db
+*.log
+
+# Model weights / large media
+*.gguf
+*.safetensors
+*.bin
+*.mp4
+*.wav
+
+# =========================
+# Frontend (Node / React / Vite)
+# =========================
+node_modules/
+dist/
+dist-ssr/
+.next/
+out/
+.vite/
+coverage/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
+# Editors / OS
+# =========================
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
