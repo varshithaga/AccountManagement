@@ -360,7 +360,9 @@ export interface TrialBalanceReport {
 }
 
 
-export type JournalSource = 'EXCEL' | 'JSON' | 'API'
+/** Imports (EXCEL / JSON / API), keyed in by hand (MANUAL), or posted by an invoice, bill or payment. */
+export type JournalSource = 'EXCEL' | 'JSON' | 'API' | 'MANUAL' | 'SALES_INVOICE' | 'PURCHASE_BILL' | 'PAYMENT' | 'BANK'
+  | 'CREDIT_NOTE' | 'OPENING_BALANCE'
 
 export interface JournalEntryLine {
   id: number
@@ -389,9 +391,12 @@ export interface JournalEntry {
   entry_number: string
   date: string
   narration: string
-  batch: number
+  /** The import it arrived in; null for manual entries and entries posted from invoices, bills or payments. */
+  batch: number | null
   source: JournalSource
   source_name: string
+  /** MANUAL (editable here), SALES_INVOICE, PURCHASE_BILL or PAYMENT; null for imported entries. */
+  origin: Exclude<JournalSource, 'EXCEL' | 'JSON' | 'API'> | null
   bank_account: number | null
   bank_account_name: string | null
   total_debit: string

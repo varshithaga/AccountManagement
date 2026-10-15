@@ -21,6 +21,8 @@ export interface Party {
   state: string
   payment_terms_days: number
   opening_balance: string
+  /** The day the opening balance is booked on (journal entry OB-C-<id> / OB-S-<id>). */
+  opening_balance_date: string | null
   is_active: boolean
   created_at: string
   outstanding: string | null
@@ -108,6 +110,8 @@ export interface BillingDoc {
   tax_amount: string
   total: string
   amount_paid: string
+  /** Taken off by posted credit / debit notes. */
+  amount_credited: string
   balance_due: string
   status: DocStatus
   notes: string
@@ -117,6 +121,30 @@ export interface BillingDoc {
   created_at: string
   items?: DocItem[]
   payments?: DocPayment[]
+  credit_notes?: NoteSummary[]
+}
+
+export interface NoteSummary {
+  id: number
+  note_number: string
+  note_date: string
+  total: string
+  status: 'POSTED' | 'CANCELLED'
+  reason: string
+}
+
+/** A credit note (on a sales invoice) or debit note (on a purchase bill). Posted when created. */
+export interface CreditNote extends NoteSummary {
+  kind: 'SALES' | 'PURCHASE'
+  sales_invoice: number | null
+  purchase_bill: number | null
+  document_number: string
+  party_name: string
+  subtotal: string
+  tax_amount: string
+  journal_entry: number | null
+  journal_entry_number: string | null
+  items: DocItem[]
 }
 
 export interface DocSummary {
@@ -159,7 +187,7 @@ export interface Payment {
 
 export interface StatementRow {
   date: string
-  type: 'INVOICE' | 'BILL' | 'RECEIPT' | 'PAYMENT'
+  type: 'INVOICE' | 'BILL' | 'RECEIPT' | 'PAYMENT' | 'CREDIT_NOTE' | 'DEBIT_NOTE'
   id: number
   number: string
   due_date: string | null
@@ -286,6 +314,14 @@ export const paymentsApi = {
     (await api.post(`/payments/${id}/allocate/`, { allocations })).data,
   removeAllocation: async (id: number, allocationId: number): Promise<Payment> =>
     (await api.delete(`/payments/${id}/allocations/${allocationId}/`)).data,
+}
+
+export const creditNotesApi = {
+  create: async (payload: Params): Promise<CreditNote> => (await api.post('/credit-notes/', payload)).data,
+  get: async (id: number): Promise<CreditNote> => (await api.get(`/credit-notes/${id}/`)).data,
+  cancel: async (id: number, confirmUnmatch = false): Promise<CreditNote> =>
+    (await api.post(`/credit-notes/${id}/cancel/`, confirmParams(confirmUnmatch))).data,
+  remove: (id: number) => api.delete(`/credit-notes/${id}/`),
 }
 
 export const agingApi = {

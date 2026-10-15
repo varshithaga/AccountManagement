@@ -7,18 +7,17 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from ..access import user_pages
 from ..database import get_db
 from ..deps import Access
 from ..errors import APIError, bad_request, forbidden
-from ..models import Transaction, User
+from ..models import JournalEntryLine, User
 from ..services.invoicing import aging_report
 from ..services.reports import (
     AccountNotFound, build_account_ledger, build_balance_sheet, build_cash_flow, build_profit_and_loss,
-    build_trial_balance, line_item_filters, resolve_period,
+    build_trial_balance, line_items, resolve_period,
 )
 from ..utils import paginate, parse_date
 
@@ -156,27 +155,25 @@ def financial_pack(request: Request, db: Session = Depends(get_db),
 @router.get("/line-item-transactions/", dependencies=[Depends(Access("profit_and_loss", "balance_sheet"))])
 def line_item_transactions(request: Request, db: Session = Depends(get_db), page: Optional[str] = None,
                            limit: Optional[str] = None):
-    """?category=&sub_category=&period=&date_from=&date_to=&account=&as_of=1 - the transactions behind one
+    """?category=&sub_category=&period=&date_from=&date_to=&account=&as_of=1 - the journal lines behind one
     report line, 20 per page. as_of=1 (Balance Sheet): everything up to the period end."""
     p = request.query_params
     _, date_from, date_to = _period(db, request)
-    where = line_item_filters(date_from, date_to, p.get("account") or None, p.get("category") or None,
-                              p.get("sub_category") or None, as_of=p.get("as_of") in ("1", "true"))
-    stmt = (select(Transaction).where(*where)
-            .options(joinedload(Transaction.category), joinedload(Transaction.sub_category))
-            .order_by(Transaction.date.desc(), Transaction.id.desc()))
+    stmt = line_items(db, date_from, date_to, p.get("account") or None, p.get("category") or None,
+                      p.get("sub_category") or None, as_of=p.get("as_of") in ("1", "true"))
 
-    def row(t: Transaction):
-        account_type = t.category.account_type.value if t.category else "EXPENSE"
-        if account_type in ("INCOME", "LIABILITY", "EQUITY"):
-            amount = (t.credit or 0) - (t.debit or 0)
+    def row(line: JournalEntryLine):
+        category, entry = line.sub_category.category, line.entry
+        if category.account_type.value in ("INCOME", "LIABILITY", "EQUITY"):
+            amount = line.credit - line.debit
         else:
-            amount = (t.debit or 0) - (t.credit or 0)
+            amount = line.debit - line.credit
         return {
-            "id": t.id, "date": t.date.isoformat(), "description": t.description, "amount": float(amount),
-            "debit": float(t.debit or 0), "credit": float(t.credit or 0),
-            "category_id": t.category_id, "category_name": t.category.name if t.category else "",
-            "sub_category_id": t.sub_category_id, "sub_category_name": t.sub_category.name if t.sub_category else "",
+            "id": line.id, "date": entry.date.isoformat(), "description": line.description or entry.narration,
+            "entry_id": entry.id, "entry_number": entry.entry_number, "amount": float(amount),
+            "debit": float(line.debit), "credit": float(line.credit),
+            "category_id": category.id, "category_name": category.name,
+            "sub_category_id": line.sub_category_id, "sub_category_name": line.sub_category.name,
         }
 
     return paginate(db, stmt, page, limit, row, default_size=20)

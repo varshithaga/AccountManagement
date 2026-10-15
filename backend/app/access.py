@@ -55,7 +55,7 @@ PAGE_ACTIONS = {
     "bank_accounts": ACTIONS,
     "bank_statements": ACTIONS,
     "transactions": ACTIONS,
-    "journal_entries": (CREATE, DELETE),  # entries are imported and deleted, never edited
+    "journal_entries": ACTIONS,  # edit = change a manual entry; imported and posted ones are never edited
     "clients": ACTIONS,
     "suppliers": ACTIONS,
     "products": ACTIONS,

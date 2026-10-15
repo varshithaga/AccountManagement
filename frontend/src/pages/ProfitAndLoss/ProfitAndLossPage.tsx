@@ -463,15 +463,15 @@ export default function ProfitAndLossPage() {
                   <AlertTriangle className="h-5 w-5 text-warning-text" />
                   <div>
                     <p className="text-sm font-bold text-warning-text ">
-                      {report.uncategorized_count} Uncategorized Transaction{report.uncategorized_count === 1 ? '' : 's'}
+                      {report.uncategorized_count} Bank Transaction{report.uncategorized_count === 1 ? '' : 's'} Not in the Books Yet
                     </p>
                     <p className="text-sm text-muted">
-                      Excluded from this report • Net amount: <strong className="font-bold">-₹{formatAmount(Math.abs(Number(report.uncategorized_net_amount)))}</strong>
+                      Not in this report until categorized and made final (or matched in Bank Reconciliation) • Net amount: <strong className="font-bold">{formatAmount(report.uncategorized_net_amount)}</strong>
                     </p>
                   </div>
                 </div>
-                <Button variant="contained" color="warning" size="sm" onClick={() => navigate('/transactions?uncategorized=true')}>
-                  Review Uncategorized Transactions
+                <Button variant="contained" color="warning" size="sm" onClick={() => navigate('/transactions')}>
+                  Review in General Ledger
                 </Button>
               </div>
             </div>

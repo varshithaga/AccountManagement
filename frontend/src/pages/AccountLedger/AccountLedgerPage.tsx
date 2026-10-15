@@ -229,7 +229,7 @@ export default function AccountLedgerPage() {
       const columns = [
         { header: 'Date', key: 'date', width: 14 },
         { header: 'Description', key: 'description', width: 48 },
-        { header: 'Bank Account', key: 'bank_account', width: 22 },
+        { header: 'Entry', key: 'bank_account', width: 22 },
         { header: 'Sub-Category', key: 'sub_category', width: 24 },
         { header: 'Debit', key: 'debit', width: 16 },
         { header: 'Credit', key: 'credit', width: 16 },
@@ -390,7 +390,7 @@ export default function AccountLedgerPage() {
                   <tr>
                     <th className="px-6 py-3">Date</th>
                     <th className="px-6 py-3">Description</th>
-                    <th className="px-6 py-3">Bank Account</th>
+                    <th className="px-6 py-3">Entry</th>
                     <th className="px-6 py-3 text-right">Debit</th>
                     <th className="px-6 py-3 text-right">Credit</th>
                     <th className="px-6 py-3 text-right">Balance ({sideLabel})</th>
@@ -418,8 +418,9 @@ export default function AccountLedgerPage() {
                         <button
                           type="button"
                           className="text-left font-semibold text-ink hover:text-violet-600 hover:underline disabled:no-underline "
-                          disabled={!hasPage('bank_statements')}
-                          onClick={() => navigate(`/bank-statements/${row.statement_id}`)}
+                          disabled={row.statement_id ? !hasPage('bank_statements') : !hasPage('journal_entries')}
+                          onClick={() => navigate(row.statement_id ? `/bank-statements/${row.statement_id}`
+                            : `/journal-entries?entry=${encodeURIComponent(row.entry_number)}`)}
                         >
                           {row.description}
                         </button>

@@ -20,12 +20,28 @@ from sqlalchemy import (
     SmallInteger,
     String,
     Text,
+    TypeDecorator,
     UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 Money = Numeric(14, 2)
+
+
+class IsoDate(TypeDecorator):
+    """A DATE column that also accepts "YYYY-MM-DD" text in queries (e.g. date >= '2026-10-01').
+    SQLite compares such text happily, but PostgreSQL refuses date-vs-text comparisons, so the
+    text is turned into a real date before it is sent. Stored exactly like a plain Date."""
+    impl = Date
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if isinstance(value, str):
+            return date.fromisoformat(value.strip()[:10])
+        if isinstance(value, datetime):
+            return value.date()
+        return value
 
 
 class Base(DeclarativeBase):
@@ -95,6 +111,11 @@ class DocumentStatus(str, enum.Enum):
     PARTIALLY_PAID = "PARTIALLY_PAID"
     PAID = "PAID"
     CANCELLED = "CANCELLED"
+
+
+class NoteKind(str, enum.Enum):
+    SALES = "SALES"        # credit note to a client - reduces a sales invoice
+    PURCHASE = "PURCHASE"  # debit note to a supplier - reduces a purchase bill
 
 
 class PaymentDirection(str, enum.Enum):
@@ -362,7 +383,7 @@ class Transaction(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     statement_id: Mapped[int] = mapped_column(ForeignKey("bank_statements.id", ondelete="CASCADE"), index=True)
-    date: Mapped[date] = mapped_column(Date, index=True)
+    date: Mapped[date] = mapped_column(IsoDate, index=True)
     # Raw description exactly as on the statement
     description: Mapped[str] = mapped_column(String(500))
     # Noise stripped + uppercased - what the engine matches against
@@ -432,7 +453,7 @@ class JournalEntry(Base):
     batch_id: Mapped[Optional[int]] = mapped_column(ForeignKey("journal_import_batches.id", ondelete="CASCADE"))
     # Voucher number from the source; unique so re-imports are skipped
     entry_number: Mapped[str] = mapped_column(String(100), unique=True)
-    date: Mapped[date] = mapped_column(Date, index=True)
+    date: Mapped[date] = mapped_column(IsoDate, index=True)
     narration: Mapped[str] = mapped_column(String(500), default="")
     # SALES_INVOICE / PURCHASE_BILL / PAYMENT for entries the app posted; null for imported ones
     origin: Mapped[Optional[str]] = mapped_column(String(20))
@@ -537,6 +558,8 @@ class Client(Base):
     payment_terms_days: Mapped[int] = mapped_column(SmallInteger, default=30)
     # Amount the client owed when they were set up in the system
     opening_balance: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
+    # The day the opening balance is booked on (journal entry OB-C-<id> / OB-S-<id>); default: the day it was entered
+    opening_balance_date: Mapped[Optional[date]] = mapped_column(IsoDate)
     # Accounts Receivable control account; falls back to the default one when empty
     receivable_account_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sub_categories.id", ondelete="SET NULL"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -564,6 +587,8 @@ class Supplier(Base):
     payment_terms_days: Mapped[int] = mapped_column(SmallInteger, default=30)
     # Amount owed to the supplier when they were set up in the system
     opening_balance: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
+    # The day the opening balance is booked on (journal entry OB-C-<id> / OB-S-<id>); default: the day it was entered
+    opening_balance_date: Mapped[Optional[date]] = mapped_column(IsoDate)
     # Accounts Payable control account; falls back to the default one when empty
     payable_account_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sub_categories.id", ondelete="SET NULL"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -582,18 +607,21 @@ class SalesInvoice(Base):
     """An invoice issued to a client. Posting it creates its journal entry."""
     __tablename__ = "sales_invoices"
     __table_args__ = (
-        CheckConstraint("amount_paid >= 0 AND amount_paid <= total", name="invoice_amount_paid_range"),
+        CheckConstraint("amount_paid >= 0 AND amount_credited >= 0 AND amount_paid + amount_credited <= total",
+                        name="invoice_amount_paid_range"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     invoice_number: Mapped[str] = mapped_column(String(50), unique=True)
     client_id: Mapped[int] = mapped_column(ForeignKey("clients.id", ondelete="RESTRICT"), index=True)
-    invoice_date: Mapped[date] = mapped_column(Date, index=True)
-    due_date: Mapped[date] = mapped_column(Date)
+    invoice_date: Mapped[date] = mapped_column(IsoDate, index=True)
+    due_date: Mapped[date] = mapped_column(IsoDate)
     subtotal: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))    # sum of line amounts before tax
     tax_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
     total: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))       # subtotal + tax_amount
     amount_paid: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))  # sum of its payment allocations
+    # Reduced by posted credit notes
+    amount_credited: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default="0")
     status: Mapped[DocumentStatus] = mapped_column(str_enum(DocumentStatus), default=DocumentStatus.DRAFT)
     notes: Mapped[str] = mapped_column(Text, default="")
     journal_entry_id: Mapped[Optional[int]] = mapped_column(
@@ -607,12 +635,13 @@ class SalesInvoice(Base):
         back_populates="invoice", cascade="all, delete-orphan", order_by="SalesInvoiceItem.id"
     )
     allocations: Mapped[list["PaymentAllocation"]] = relationship(back_populates="sales_invoice", passive_deletes="all")
+    credit_notes: Mapped[list["CreditNote"]] = relationship(back_populates="sales_invoice", passive_deletes="all")
     journal_entry: Mapped[Optional[JournalEntry]] = relationship()
     created_by: Mapped[Optional[User]] = relationship()
 
     @property
     def balance_due(self) -> Decimal:
-        return self.total - self.amount_paid
+        return self.total - self.amount_paid - (self.amount_credited or Decimal("0"))
 
 
 class SalesInvoiceItem(Base):
@@ -651,18 +680,21 @@ class PurchaseBill(Base):
     __table_args__ = (
         # Bill numbers are the supplier's own, so they're only unique per supplier
         UniqueConstraint("supplier_id", "bill_number", name="unique_bill_number_per_supplier"),
-        CheckConstraint("amount_paid >= 0 AND amount_paid <= total", name="bill_amount_paid_range"),
+        CheckConstraint("amount_paid >= 0 AND amount_credited >= 0 AND amount_paid + amount_credited <= total",
+                        name="bill_amount_paid_range"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     bill_number: Mapped[str] = mapped_column(String(50))
     supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id", ondelete="RESTRICT"), index=True)
-    bill_date: Mapped[date] = mapped_column(Date, index=True)
-    due_date: Mapped[date] = mapped_column(Date)
+    bill_date: Mapped[date] = mapped_column(IsoDate, index=True)
+    due_date: Mapped[date] = mapped_column(IsoDate)
     subtotal: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
     tax_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
     total: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
     amount_paid: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
+    # Reduced by posted debit notes
+    amount_credited: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default="0")
     status: Mapped[DocumentStatus] = mapped_column(str_enum(DocumentStatus), default=DocumentStatus.DRAFT)
     notes: Mapped[str] = mapped_column(Text, default="")
     file_path: Mapped[Optional[str]] = mapped_column(String(500))  # scanned copy of the bill
@@ -677,12 +709,13 @@ class PurchaseBill(Base):
         back_populates="bill", cascade="all, delete-orphan", order_by="PurchaseBillItem.id"
     )
     allocations: Mapped[list["PaymentAllocation"]] = relationship(back_populates="purchase_bill", passive_deletes="all")
+    credit_notes: Mapped[list["CreditNote"]] = relationship(back_populates="purchase_bill", passive_deletes="all")
     journal_entry: Mapped[Optional[JournalEntry]] = relationship()
     created_by: Mapped[Optional[User]] = relationship()
 
     @property
     def balance_due(self) -> Decimal:
-        return self.total - self.amount_paid
+        return self.total - self.amount_paid - (self.amount_credited or Decimal("0"))
 
 
 class PurchaseBillItem(Base):
@@ -706,6 +739,75 @@ class PurchaseBillItem(Base):
     account_id: Mapped[int] = mapped_column(ForeignKey("sub_categories.id", ondelete="RESTRICT"))
 
     bill: Mapped[PurchaseBill] = relationship(back_populates="items")
+    product: Mapped[Optional[Product]] = relationship()
+    tax_rate: Mapped[Optional[TaxRate]] = relationship()
+    account: Mapped[SubCategory] = relationship()
+
+
+# ---------------------------------------------------------------------------
+# Credit notes (sales) and debit notes (purchases)
+# ---------------------------------------------------------------------------
+
+class CreditNote(Base):
+    """Reduces a posted sales invoice (credit note to the client) or purchase bill (debit note to the
+    supplier) - for returns, discounts or corrections. Posted when created: its journal entry reverses
+    the lines it covers. Cancelling it deletes that entry and gives the amount back to the document."""
+    __tablename__ = "credit_notes"
+    __table_args__ = (
+        CheckConstraint(
+            "(kind = 'SALES' AND sales_invoice_id IS NOT NULL AND purchase_bill_id IS NULL) OR "
+            "(kind = 'PURCHASE' AND purchase_bill_id IS NOT NULL AND sales_invoice_id IS NULL)",
+            name="credit_note_document_matches_kind",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    note_number: Mapped[str] = mapped_column(String(50), unique=True)  # CN-00001 / DN-00001
+    kind: Mapped[NoteKind] = mapped_column(str_enum(NoteKind))
+    sales_invoice_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sales_invoices.id", ondelete="RESTRICT"), index=True)
+    purchase_bill_id: Mapped[Optional[int]] = mapped_column(ForeignKey("purchase_bills.id", ondelete="RESTRICT"), index=True)
+    note_date: Mapped[date] = mapped_column(IsoDate, index=True)
+    reason: Mapped[str] = mapped_column(Text, default="")
+    subtotal: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
+    tax_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
+    total: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
+    # POSTED or CANCELLED
+    status: Mapped[DocumentStatus] = mapped_column(str_enum(DocumentStatus), default=DocumentStatus.POSTED)
+    journal_entry_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("journal_entries.id", ondelete="SET NULL"), unique=True
+    )
+    created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    sales_invoice: Mapped[Optional["SalesInvoice"]] = relationship(back_populates="credit_notes")
+    purchase_bill: Mapped[Optional["PurchaseBill"]] = relationship(back_populates="credit_notes")
+    items: Mapped[list["CreditNoteItem"]] = relationship(
+        back_populates="note", cascade="all, delete-orphan", order_by="CreditNoteItem.id"
+    )
+    journal_entry: Mapped[Optional[JournalEntry]] = relationship()
+    created_by: Mapped[Optional[User]] = relationship()
+
+
+class CreditNoteItem(Base):
+    """One line of a credit / debit note - the same shape as an invoice or bill line."""
+    __tablename__ = "credit_note_items"
+    __table_args__ = (
+        CheckConstraint("quantity > 0", name="note_item_quantity_positive"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    note_id: Mapped[int] = mapped_column(ForeignKey("credit_notes.id", ondelete="CASCADE"), index=True)
+    product_id: Mapped[Optional[int]] = mapped_column(ForeignKey("products.id", ondelete="SET NULL"))
+    description: Mapped[str] = mapped_column(String(500))
+    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 3), default=Decimal("1"))
+    unit_price: Mapped[Decimal] = mapped_column(Money)
+    discount_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"))
+    tax_rate_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tax_rates.id", ondelete="RESTRICT"))
+    amount: Mapped[Decimal] = mapped_column(Money)
+    tax_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
+    account_id: Mapped[int] = mapped_column(ForeignKey("sub_categories.id", ondelete="RESTRICT"))
+
+    note: Mapped[CreditNote] = relationship(back_populates="items")
     product: Mapped[Optional[Product]] = relationship()
     tax_rate: Mapped[Optional[TaxRate]] = relationship()
     account: Mapped[SubCategory] = relationship()
@@ -736,7 +838,7 @@ class Payment(Base):
     direction: Mapped[PaymentDirection] = mapped_column(str_enum(PaymentDirection))
     client_id: Mapped[Optional[int]] = mapped_column(ForeignKey("clients.id", ondelete="RESTRICT"), index=True)
     supplier_id: Mapped[Optional[int]] = mapped_column(ForeignKey("suppliers.id", ondelete="RESTRICT"), index=True)
-    payment_date: Mapped[date] = mapped_column(Date, index=True)
+    payment_date: Mapped[date] = mapped_column(IsoDate, index=True)
     amount: Mapped[Decimal] = mapped_column(Money)
     method: Mapped[PaymentMethod] = mapped_column(str_enum(PaymentMethod))
     # Empty for cash payments
@@ -828,8 +930,8 @@ class ReconciliationPeriod(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     bank_account_id: Mapped[int] = mapped_column(ForeignKey("bank_accounts.id", ondelete="CASCADE"))
-    period_start: Mapped[date] = mapped_column(Date)  # first day of the month
-    period_end: Mapped[date] = mapped_column(Date)    # last day of the month
+    period_start: Mapped[date] = mapped_column(IsoDate)  # first day of the month
+    period_end: Mapped[date] = mapped_column(IsoDate)    # last day of the month
     bank_balance: Mapped[Optional[Decimal]] = mapped_column(Money)
     book_balance: Mapped[Decimal] = mapped_column(Money)
     deposits_in_transit: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
@@ -850,7 +952,7 @@ class BookClosing(Base):
     __tablename__ = "book_closings"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    closed_through: Mapped[date] = mapped_column(Date, unique=True)
+    closed_through: Mapped[date] = mapped_column(IsoDate, unique=True)
     closed_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     closed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     note: Mapped[str] = mapped_column(String(500), default="")

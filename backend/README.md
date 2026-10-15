@@ -69,6 +69,26 @@ Tests: `pytest tests`
 - **Period close** `period-close/` (financial year + default receivable / payable / cash accounts), `period-close/readiness|close|reopen/`
 - **Dashboard** `dashboard/overview|kpis|cash-position|attention|top-expenses|recent-statements|cash-flow-forecast|reconciliation-status/`, `workflow/status/`
 
+## Reports come from the books (the journal)
+
+P&L, Balance Sheet, Trial Balance, Cash Flow, the Account Ledger and the dashboard figures all sum
+journal entry lines. Entries reach the journal from:
+
+- **Manual entries** (Journal Entries → New journal entry) and **imports** (Excel / JSON / API).
+- **Sales invoices, purchase bills, payments, and credit / debit notes**, when they are posted.
+- **Client / supplier opening balances**, booked as `OB-C-<id>` / `OB-S-<id>` against "Opening Balance Equity".
+- **Bank transactions:** making a categorized transaction final posts it as `BT-<id>` (withdrawal:
+  Dr category / Cr bank GL; deposit: the reverse) and matches it in Bank Reconciliation. A transaction
+  already matched to an imported or payment entry is *not* posted again, so nothing is counted twice.
+  Reopening it takes the entry out.
+
+Bank transactions not in the books yet (not final, or no GL account on the bank) are in no total;
+each report shows how many there are. "Post to books" in the General Ledger posts final transactions
+that couldn't be posted earlier (e.g. the bank's GL account was linked later).
+
+The money already in the bank before the first statement only appears once its opening balance is
+booked (Bank Reconciliation → Book opening balance).
+
 ## How invoices, bills and payments reach the books
 
 Posting an invoice, bill or payment creates its own journal entry (`JournalEntry.origin` says which),

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   FileText, ShoppingCart, Plus, Pencil, Trash2, RefreshCw, Send, Ban, Eye, AlertTriangle, Wallet, FilePen,
-  CheckCircle2, X, HandCoins,
+  CheckCircle2, X, HandCoins, FileMinus,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import Pagination, { DEFAULT_ROWS_PER_PAGE } from '../../components/Pagination'
@@ -11,12 +11,13 @@ import { Alert, Button, DateField, Drawer, IconButton, Modal, Panel, Select, Spi
 import { EmptyState, KpiTile, PageHeader, RowAction, SearchBox } from '../../components/PageParts'
 import { formatMoney } from '../../utils/periods'
 import { withUnmatchConfirm } from '../../utils/reconcileConfirm'
-import { docsApi, errorText, productsApi, taxRatesApi } from './billingapi'
+import { creditNotesApi, docsApi, errorText, productsApi, taxRatesApi } from './billingapi'
 import type { BillingDoc, DocKind, DocStatus, DocSummary, ItemPayload, Product, TaxRate } from './billingapi'
 import {
   AccountSelect, Field, PartySelect, StatusChip, TABLE_HEAD_ROW, TABLE_ROW, TD, TH, formatDate, isOverdue, todayIso,
 } from './billingParts'
 import { PaymentEditor } from './PaymentsPage'
+import CreditNoteDialog from './CreditNoteDialog'
 
 type StatusFilter = 'ALL' | DocStatus
 
@@ -224,7 +225,8 @@ export default function DocumentsPage({ kind }: { kind: DocKind }) {
           onPost={async (d) => { await post(d) }}
           onCancel={async (d) => { await cancel(d) }}
           onPay={(d) => setPaying(d)}
-          canEdit={canEdit} canPay={canPay && hasPage('payments')} />
+          canEdit={canEdit} canCreate={canCreate} canPay={canPay && hasPage('payments')}
+          onChanged={load} />
       )}
 
       {paying && (
@@ -240,7 +242,7 @@ export default function DocumentsPage({ kind }: { kind: DocKind }) {
 // Detail drawer
 // ---------------------------------------------------------------------------
 
-function DocDrawer({ kind, id, onClose, onEdit, onPost, onCancel, onPay, canEdit, canPay }: {
+function DocDrawer({ kind, id, onClose, onEdit, onPost, onCancel, onPay, onChanged, canEdit, canCreate, canPay }: {
   kind: DocKind
   id: number
   onClose: () => void
@@ -248,12 +250,28 @@ function DocDrawer({ kind, id, onClose, onEdit, onPost, onCancel, onPay, canEdit
   onPost: (d: BillingDoc) => Promise<void>
   onCancel: (d: BillingDoc) => Promise<void>
   onPay: (d: BillingDoc) => void
+  /** Something changed the document (a note) - refresh the list behind the drawer. */
+  onChanged: () => void
   canEdit: boolean
+  canCreate: boolean
   canPay: boolean
 }) {
   const text = TEXT[kind]
+  const noteName = kind === 'sales' ? 'Credit note' : 'Debit note'
   const [doc, setDoc] = useState<BillingDoc | null>(null)
   const [error, setError] = useState('')
+  const [noting, setNoting] = useState(false)
+
+  const cancelNote = async (noteId: number, number: string) => {
+    if (!window.confirm(`Cancel ${number}? Its journal entry is removed and the amount goes back onto the ${text.single}.`)) return
+    try {
+      await withUnmatchConfirm((confirm) => creditNotesApi.cancel(noteId, confirm))
+      reload()
+      onChanged()
+    } catch (err) {
+      alert(errorText(err, 'Failed to cancel the note.'))
+    }
+  }
   const reload = useCallback(() => {
     docsApi(kind).get(id).then(setDoc).catch((err) => setError(errorText(err, 'Failed to load.')))
   }, [kind, id])
@@ -314,10 +332,34 @@ function DocDrawer({ kind, id, onClose, onEdit, onPost, onCancel, onPay, canEdit
             <Row label="GST" value={formatMoney(doc.tax_amount)} />
             <Row label="Total" value={formatMoney(doc.total)} strong />
             <Row label="Paid" value={formatMoney(doc.amount_paid)} />
+            {Number(doc.amount_credited) > 0 && <Row label={kind === 'sales' ? 'Credited' : 'Debit notes'} value={formatMoney(doc.amount_credited)} />}
             <Row label="Balance due" value={formatMoney(doc.balance_due)} strong />
           </div>
 
           {doc.notes && <p className="whitespace-pre-wrap rounded-xl border border-border-soft p-3 text-sm text-muted">{doc.notes}</p>}
+
+          {!!doc.credit_notes?.length && (
+            <div>
+              <p className="mb-2 text-xs font-bold uppercase tracking-[0.06em] text-muted">{noteName}s</p>
+              {doc.credit_notes.map((n) => (
+                <div key={n.id} className="flex items-center justify-between gap-2 border-b border-border-soft py-2 text-sm last:border-0">
+                  <span className={n.status === 'CANCELLED' ? 'text-muted line-through' : ''}>
+                    <span className="num font-semibold">{n.note_number}</span> · {formatDate(n.note_date)}
+                    {n.reason && <span className="text-muted"> · {n.reason}</span>}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="num">{formatMoney(n.total)}</span>
+                    {n.status === 'POSTED' && canEdit && (
+                      <button type="button" title="Cancel note" onClick={() => cancelNote(n.id, n.note_number)}
+                        className="flex h-7 w-7 items-center justify-center rounded-lg text-danger-text hover:bg-danger-soft">
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {!!doc.payments?.length && (
             <div>
@@ -337,11 +379,19 @@ function DocDrawer({ kind, id, onClose, onEdit, onPost, onCancel, onPay, canEdit
               <Button variant="contained" icon={<Send />} onClick={async () => { await onPost(doc); reload() }}>Post</Button>
             </>}
             {open && canPay && <Button variant="contained" icon={<HandCoins />} onClick={() => onPay(doc)}>{text.pay}</Button>}
-            {doc.status !== 'DRAFT' && doc.status !== 'CANCELLED' && canEdit && !doc.payments?.length && (
+            {open && canCreate && Number(doc.balance_due) > 0 && (
+              <Button variant="outlined" icon={<FileMinus />} onClick={() => setNoting(true)}>{noteName}</Button>
+            )}
+            {doc.status !== 'DRAFT' && doc.status !== 'CANCELLED' && canEdit && !doc.payments?.length
+              && !doc.credit_notes?.some((n) => n.status === 'POSTED') && (
               <Button variant="outlined" color="error" icon={<Ban />} onClick={async () => { await onCancel(doc); reload() }}>Cancel {text.single}</Button>
             )}
           </div>
         </div>
+      )}
+      {noting && doc && (
+        <CreditNoteDialog kind={kind} doc={doc} onClose={() => setNoting(false)}
+          onSaved={() => { setNoting(false); reload(); onChanged() }} />
       )}
     </Drawer>
   )

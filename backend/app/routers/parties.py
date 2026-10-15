@@ -14,7 +14,7 @@ from ..models import (
     Supplier, TaxRate,
 )
 from ..schemas import ClientIn, ProductIn, SupplierIn, TaxRateIn
-from ..services.invoicing import party_statement
+from ..services.invoicing import InvoicingError, party_statement, remove_opening_balance, sync_opening_balance
 from ..utils import apply_ordering, apply_search, get_or_404, is_true, paginate, parse_date
 
 router = APIRouter(prefix="/api", tags=["clients, suppliers & products"])
@@ -58,7 +58,7 @@ def _party_routes(path: str):
             _check_account(db, account_field, data[account_field])
             data[f"{account_field}_id"] = data.pop(account_field)
         # Text columns are NOT NULL - an explicit null means "clear it".
-        nullable = {"code", "gstin", f"{account_field}_id", "opening_balance"}
+        nullable = {"code", "gstin", f"{account_field}_id", "opening_balance", "opening_balance_date"}
         return {k: ("" if v is None and k not in nullable else v) for k, v in data.items()
                 if not (k == "opening_balance" and v is None)}
 
@@ -78,11 +78,21 @@ def _party_routes(path: str):
                               [model.name])
         return paginate(db, stmt, page, limit, serialize_many=lambda rows: serialize_many(db, rows))
 
+    def save(db: Session, obj) -> None:
+        """Commits, booking the opening balance (or removing it when zero) in the same transaction."""
+        try:
+            db.flush()
+            sync_opening_balance(db, obj)
+            db.commit()
+        except InvoicingError as exc:
+            db.rollback()
+            raise bad_request(str(exc))
+
     @router.post(f"/{path}/", status_code=201, dependencies=[Depends(access)], name=f"create_{path}")
     def create_party(body: schema, db: Session = Depends(get_db)):
         obj = model(**prepare(db, body.model_dump(exclude_unset=True)))
         db.add(obj)
-        db.commit()
+        save(db, obj)
         return serialize_many(db, [obj])[0]
 
     @router.get(f"/{path}/{{party_id:int}}/", dependencies=[Depends(access)], name=f"get_{path}")
@@ -95,7 +105,7 @@ def _party_routes(path: str):
         obj = get_or_404(db, model, party_id)
         for field, value in prepare(db, body.model_dump(exclude_unset=True), obj).items():
             setattr(obj, field, value)
-        db.commit()
+        save(db, obj)
         db.refresh(obj)
         return serialize_many(db, [obj])[0]
 
@@ -105,6 +115,11 @@ def _party_routes(path: str):
         obj = get_or_404(db, model, party_id)
         if db.scalar(select(exists().where(doc_col == obj.id))) or db.scalar(select(exists().where(pay_col == obj.id))):
             raise bad_request(f'"{obj.name}" has invoices, bills or payments - mark it inactive instead of deleting it.')
+        try:
+            remove_opening_balance(db, obj)
+        except InvoicingError as exc:
+            db.rollback()
+            raise bad_request(str(exc))
         db.delete(obj)
         db.commit()
         return Response(status_code=204)

@@ -1,4 +1,5 @@
 import axios from 'axios'
+import type { FinalizeResult } from '../../utils/finalizeMessage'
 import { getAuthHeaders, createApiUrl } from '../../access/access'
 import type { Transaction, Paginated } from '../../types'
 import { confirmParams } from '../../utils/reconcileConfirm'
@@ -92,7 +93,7 @@ export const transactionsApi = {
   },
 
   /** Lock transactions as final (only categorized ones / transfers are locked). */
-  finalize: async (payload: { ids?: number[]; statement?: number }): Promise<{ finalized: number; already_final: number; not_ready: number }> => {
+  finalize: async (payload: { ids?: number[]; statement?: number }): Promise<FinalizeResult> => {
     const response = await axios.post(createApiUrl('/transactions/finalize/'), payload, {
       headers: await getAuthHeaders(),
     })
@@ -123,6 +124,14 @@ export const transactionsApi = {
 
   createRule: async (id: number | string): Promise<unknown> => {
     const response = await axios.post(createApiUrl(`/transactions/${id}/create-rule/`), {}, {
+      headers: await getAuthHeaders(),
+    })
+    return response.data
+  },
+
+  /** Posts final transactions that are not in the books yet (e.g. finalized before the bank had a GL account). */
+  postToBooks: async (payload: { ids?: number[]; statement?: number } = {}): Promise<NonNullable<FinalizeResult['posting']>> => {
+    const response = await axios.post(createApiUrl('/transactions/post-to-books/'), payload, {
       headers: await getAuthHeaders(),
     })
     return response.data

@@ -28,7 +28,7 @@ from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session
 
 from ..models import (
-    BankAccount, Client, DocumentStatus, JournalEntry, JournalEntryLine, Payment, PaymentAllocation,
+    BankAccount, Client, CreditNote, CreditNoteItem, DocumentStatus, NoteKind, JournalEntry, JournalEntryLine, Payment, PaymentAllocation,
     PaymentDirection, PaymentMethod, Product, PurchaseBill, PurchaseBillItem, SalesInvoice, SalesInvoiceItem,
     SubCategory, Supplier, TaxRate, User,
 )
@@ -40,6 +40,9 @@ from .settings import accounting_settings
 ORIGIN_SALES_INVOICE = 'SALES_INVOICE'
 ORIGIN_PURCHASE_BILL = 'PURCHASE_BILL'
 ORIGIN_PAYMENT = 'PAYMENT'
+ORIGIN_MANUAL = 'MANUAL'  # keyed in on the Journal Entries page - edited and deleted there
+ORIGIN_CREDIT_NOTE = 'CREDIT_NOTE'
+ORIGIN_OPENING_BALANCE = 'OPENING_BALANCE'
 OPEN_STATUSES = (DocumentStatus.POSTED, DocumentStatus.PARTIALLY_PAID)
 
 
@@ -102,13 +105,13 @@ def next_number(db: Session, column, prefix: str, width: int = 5) -> str:
 # Line items
 # ---------------------------------------------------------------------------
 
-def build_items(db: Session, items: list, kind: str) -> tuple[list, Decimal, Decimal]:
+def build_items(db: Session, items: list, kind: str, model=None) -> tuple[list, Decimal, Decimal]:
     """Validates line items (dicts) and works out each line's amount and tax.
     kind 'sale' defaults price / account from a product's sale side, 'purchase' from its purchase side.
     Returns ([item model], subtotal, tax_amount)."""
     if not items:
         raise InvoicingError('Add at least one line item.')
-    model = SalesInvoiceItem if kind == 'sale' else PurchaseBillItem
+    model = model or (SalesInvoiceItem if kind == 'sale' else PurchaseBillItem)
     built, subtotal, tax_total = [], ZERO, ZERO
     for n, item in enumerate(items, start=1):
         product = None
@@ -305,6 +308,8 @@ def cancel_document(db: Session, doc, confirm_unmatch: bool = False):
         raise InvoicingError(f'This {label} is already cancelled.')
     if doc.allocations:
         raise InvoicingError(f'This {label} has payments allocated to it - remove those allocations first.')
+    if any(n.status == DocumentStatus.POSTED for n in doc.credit_notes):
+        raise InvoicingError(f'This {label} has credit / debit notes - cancel those first.')
     _remove_entry(db, doc.journal_entry_id, confirm_unmatch)
     doc.journal_entry_id = None
     doc.status = DocumentStatus.CANCELLED
@@ -387,14 +392,17 @@ def post_purchase_bill(db: Session, bill: PurchaseBill) -> PurchaseBill:
 # ---------------------------------------------------------------------------
 
 def refresh_status(doc) -> None:
-    """amount_paid from the document's allocations, and the matching status (posted documents only)."""
+    """amount_paid from the document's allocations, amount_credited from its posted notes, and the
+    matching status (posted documents only): settled = paid + credited."""
     paid = sum((a.amount for a in doc.allocations), ZERO)
     doc.amount_paid = paid
+    doc.amount_credited = sum((n.total for n in doc.credit_notes if n.status == DocumentStatus.POSTED), ZERO)
     if doc.status in (DocumentStatus.DRAFT, DocumentStatus.CANCELLED):
         return
-    if paid <= 0:
+    settled = paid + doc.amount_credited
+    if settled <= 0:
         doc.status = DocumentStatus.POSTED
-    elif paid >= doc.total:
+    elif settled >= doc.total:
         doc.status = DocumentStatus.PAID
     else:
         doc.status = DocumentStatus.PARTIALLY_PAID
@@ -437,8 +445,8 @@ def add_allocations(db: Session, payment: Payment, allocations: list[dict]) -> N
                                  'documents can take a payment.')
         doc_field = 'sales_invoice_id' if payment.direction == PaymentDirection.RECEIPT else 'purchase_bill_id'
         existing = next((a for a in payment.allocations if getattr(a, doc_field) == doc.id), None)
-        if amount > doc.total - doc.amount_paid:
-            raise InvoicingError(f'Allocation {n}: {amount} is more than the {doc.total - doc.amount_paid} still due on {label}.')
+        if amount > doc.balance_due:
+            raise InvoicingError(f'Allocation {n}: {amount} is more than the {doc.balance_due} still due on {label}.')
         if amount > available:
             raise InvoicingError(f'Allocation {n}: only {available} of this payment is left to allocate.')
         if existing:
@@ -544,10 +552,19 @@ def guard_entry_not_from_document(db: Session, entry_ids: list[int]) -> Optional
     (those are removed by cancelling / deleting the document), else None."""
     if not entry_ids:
         return None
-    entry = db.scalars(select(JournalEntry).where(JournalEntry.id.in_(entry_ids), JournalEntry.origin.is_not(None))
-                       .limit(1)).first()
+    entry = db.scalars(select(JournalEntry).where(JournalEntry.id.in_(entry_ids), JournalEntry.origin.is_not(None),
+                                                  JournalEntry.origin != ORIGIN_MANUAL).limit(1)).first()
     if entry is None:
         return None
+    if entry.origin == ORIGIN_CREDIT_NOTE:
+        return (f'Entry {entry.entry_number} was posted from a credit / debit note - cancel the note instead of '
+                'deleting its journal entry.')
+    if entry.origin == ORIGIN_OPENING_BALANCE:
+        return (f'Entry {entry.entry_number} books a client / supplier opening balance - change or clear the opening '
+                'balance on the Clients / Suppliers page instead.')
+    if entry.origin == 'BANK':
+        return (f'Entry {entry.entry_number} was posted from a final bank transaction - reopen that transaction in the '
+                'General Ledger to take it out of the books.')
     what = {ORIGIN_SALES_INVOICE: 'a sales invoice', ORIGIN_PURCHASE_BILL: 'a purchase bill',
             ORIGIN_PAYMENT: 'a payment'}.get(entry.origin, 'another document')
     return (f'Entry {entry.entry_number} was posted from {what} - cancel or delete that document instead '
@@ -570,8 +587,14 @@ def party_statement(db: Session, party, date_from: Optional[date] = None, date_t
     docs = db.scalars(select(doc_model).where(party_col == party.id, doc_model.status.in_(
         [DocumentStatus.POSTED, DocumentStatus.PARTIALLY_PAID, DocumentStatus.PAID]))).all()
     payments = db.scalars(select(Payment).where(pay_col == party.id)).all()
+    note_doc = CreditNote.sales_invoice_id if is_client else CreditNote.purchase_bill_id
+    notes = db.scalars(select(CreditNote).where(CreditNote.status == DocumentStatus.POSTED, note_doc.in_(
+        select(doc_model.id).where(party_col == party.id)))).all()
 
     events = []
+    for cn in notes:
+        events.append({'date': cn.note_date, 'type': 'CREDIT_NOTE' if is_client else 'DEBIT_NOTE', 'id': cn.id,
+                       'number': cn.note_number, 'due_date': None, 'increase': ZERO, 'decrease': cn.total})
     for d in docs:
         events.append({
             'date': d.invoice_date if is_client else d.bill_date,
@@ -635,7 +658,7 @@ def aging_report(db: Session, kind: str, as_of: Optional[date] = None) -> dict:
 
     parties = {p.id: blank(p) for p in db.scalars(select(party_model).order_by(party_model.name))}
     for doc in db.scalars(select(doc_model).where(doc_model.status.in_(OPEN_STATUSES), doc_date <= as_of)):
-        due = doc.total - doc.amount_paid
+        due = doc.balance_due
         if due <= 0:
             continue
         row = parties[getattr(doc, party_attr)]
@@ -663,3 +686,175 @@ def aging_report(db: Session, kind: str, as_of: Optional[date] = None) -> dict:
               ['opening_balance', *(k for k, *_ in AGING_BUCKETS), 'advances', 'total']}
     return {'kind': kind, 'as_of': as_of.isoformat(), 'buckets': [k for k, *_ in AGING_BUCKETS],
             'parties': rows, 'totals': totals}
+
+
+# ---------------------------------------------------------------------------
+# Credit notes (sales) and debit notes (purchases)
+# ---------------------------------------------------------------------------
+
+def create_credit_note(db: Session, data: dict, user: Optional[User]) -> CreditNote:
+    """Creates and posts a note against a posted invoice (credit note) or bill (debit note): its lines
+    reverse the income / expense and GST they cover, and it lowers the document's balance due.
+    data: {"sales_invoice_id" | "purchase_bill_id", "note_date", "reason", "note_number"?, "items": [...]}"""
+    if data.get('sales_invoice_id'):
+        kind, doc = NoteKind.SALES, db.get(SalesInvoice, data['sales_invoice_id'])
+    elif data.get('purchase_bill_id'):
+        kind, doc = NoteKind.PURCHASE, db.get(PurchaseBill, data['purchase_bill_id'])
+    else:
+        raise InvoicingError('Choose the invoice or bill the note is for.')
+    if doc is None:
+        raise InvoicingError('That invoice / bill does not exist.')
+    label = 'invoice' if kind == NoteKind.SALES else 'bill'
+    if doc.status not in (DocumentStatus.POSTED, DocumentStatus.PARTIALLY_PAID, DocumentStatus.PAID):
+        raise InvoicingError(f'Only a posted {label} can get a {"credit" if kind == NoteKind.SALES else "debit"} note.')
+
+    items, subtotal, tax = build_items(db, data.get('items') or [], 'sale' if kind == NoteKind.SALES else 'purchase',
+                                       model=CreditNoteItem)
+    total = subtotal + tax
+    if total <= 0:
+        raise InvoicingError('A note must total more than zero.')
+    # Only what is still owed can be credited; anything already paid would need a refund payment instead.
+    if total > doc.balance_due:
+        raise InvoicingError(f'The note totals {total}, but only {doc.balance_due} is still due on this {label}. '
+                             'Remove a payment allocation first if the paid part is being refunded.')
+    note_date = data.get('note_date') or _today()
+    doc_date = doc.invoice_date if kind == NoteKind.SALES else doc.bill_date
+    if note_date < doc_date:
+        raise InvoicingError(f'The note cannot be dated before the {label} ({doc_date:%d %b %Y}).')
+
+    prefix = 'CN' if kind == NoteKind.SALES else 'DN'
+    number = (data.get('note_number') or '').strip() or next_number(db, CreditNote.note_number, prefix)
+    if db.scalar(select(exists().where(CreditNote.note_number == number))):
+        raise InvoicingError(f'Note number {number} is already used.')
+
+    note = CreditNote(note_number=number, kind=kind, note_date=note_date, reason=(data.get('reason') or '').strip(),
+                      subtotal=subtotal, tax_amount=tax, total=total, status=DocumentStatus.POSTED,
+                      created_by_id=user.id if user else None)
+    note.items = items
+    if kind == NoteKind.SALES:
+        note.sales_invoice = doc
+        party = doc.client
+        lines = []
+        for item in items:
+            lines.append((item.account_id, item.amount, ZERO, item.description))
+            if item.tax_amount:
+                tax_rate = db.get(TaxRate, item.tax_rate_id)
+                tax_account = tax_rate.output_tax_account_id or getattr(_named_account(db, 'GST Payable'), 'id', None)
+                if not tax_account:
+                    raise InvoicingError(f'Tax rate "{tax_rate.name}" has no output tax account.')
+                lines.append((tax_account, item.tax_amount, ZERO, f'{tax_rate.name} on {number}'))
+        lines.append((_receivable_account_id(db, party), ZERO, total, f'Credit note {number}'))
+        narration = f'Credit note {number} on invoice {doc.invoice_number} - {party.name}'
+    else:
+        note.purchase_bill = doc
+        party = doc.supplier
+        lines = [(_payable_account_id(db, party), total, ZERO, f'Debit note {number}')]
+        for item in items:
+            tax_rate = db.get(TaxRate, item.tax_rate_id) if item.tax_rate_id else None
+            tax_account = tax_rate.input_tax_account_id if tax_rate else None
+            if item.tax_amount and tax_account:
+                lines.append((item.account_id, ZERO, item.amount, item.description))
+                lines.append((tax_account, ZERO, item.tax_amount, f'{tax_rate.name} on {number}'))
+            else:
+                lines.append((item.account_id, ZERO, item.amount + item.tax_amount, item.description))
+        narration = f'Debit note {number} on bill {doc.bill_number} - {party.name}'
+    db.add(note)
+    entry = _post_entry(db, number, note_date, narration, ORIGIN_CREDIT_NOTE, lines)
+    note.journal_entry_id = entry.id
+    db.flush()
+    db.refresh(doc, ['credit_notes'])
+    refresh_status(doc)
+    db.flush()
+    return note
+
+
+def cancel_credit_note(db: Session, note: CreditNote, confirm_unmatch: bool = False) -> CreditNote:
+    """Deletes the note's journal entry and gives its amount back to the invoice / bill."""
+    if note.status == DocumentStatus.CANCELLED:
+        raise InvoicingError('This note is already cancelled.')
+    _remove_entry(db, note.journal_entry_id, confirm_unmatch)
+    note.journal_entry_id = None
+    note.status = DocumentStatus.CANCELLED
+    db.flush()
+    doc = note.sales_invoice or note.purchase_bill
+    db.refresh(doc, ['credit_notes'])
+    refresh_status(doc)
+    db.flush()
+    return note
+
+
+def delete_credit_note(db: Session, note: CreditNote) -> None:
+    if note.status != DocumentStatus.CANCELLED:
+        raise InvoicingError('Only a cancelled note can be deleted - cancel it first.')
+    db.delete(note)
+    db.flush()
+
+
+# ---------------------------------------------------------------------------
+# Opening balances of clients and suppliers
+# ---------------------------------------------------------------------------
+
+OPENING_EQUITY_NAME = 'Opening Balance Equity'
+
+
+def opening_equity_account(db: Session) -> SubCategory:
+    """The equity account opening balances are booked against - "Opening Balance Equity", created under
+    the first equity category when it doesn't exist yet."""
+    from ..models import AccountType, Category
+    sub = _named_account(db, OPENING_EQUITY_NAME)
+    if sub:
+        return sub
+    category = db.scalars(select(Category).where(Category.account_type == AccountType.EQUITY)
+                          .order_by(Category.id).limit(1)).first()
+    if category is None:
+        raise InvoicingError('Add an Equity category to the Chart of Accounts first - opening balances are booked '
+                             f'against an "{OPENING_EQUITY_NAME}" account under it.')
+    sub = SubCategory(category_id=category.id, name=OPENING_EQUITY_NAME,
+                      description='Balancing account for opening balances entered when the books were set up.')
+    db.add(sub)
+    db.flush()
+    return sub
+
+
+def opening_entry_number(party) -> str:
+    return f'OB-{"C" if isinstance(party, Client) else "S"}-{party.id}'
+
+
+def sync_opening_balance(db: Session, party) -> Optional[JournalEntry]:
+    """Books the client / supplier's opening balance as journal entry OB-C-<id> / OB-S-<id> (replacing
+    the previous one), or removes it when the balance is zero:
+        client:   Dr their receivable account / Cr Opening Balance Equity
+        supplier: Dr Opening Balance Equity / Cr their payable account
+    (a negative balance books the other way round). Dated opening_balance_date, default today."""
+    number = opening_entry_number(party)
+    existing = db.scalars(select(JournalEntry).where(JournalEntry.entry_number == number)).first()
+    amount = Decimal(party.opening_balance or 0)
+    on = party.opening_balance_date or _today()
+    if existing is not None:
+        unchanged = (existing.date == on and existing.lines and
+                     sum((l.debit for l in existing.lines), ZERO) == abs(amount) and amount != 0)
+        if unchanged:
+            party_account = (_receivable_account_id(db, party) if isinstance(party, Client)
+                             else _payable_account_id(db, party))
+            if any(l.sub_category_id == party_account for l in existing.lines):
+                return existing
+        _remove_entry(db, existing.id, confirm_unmatch=False)
+    if amount == 0:
+        return None
+    equity = opening_equity_account(db).id
+    if isinstance(party, Client):
+        dr, cr = _receivable_account_id(db, party), equity
+    else:
+        dr, cr = equity, _payable_account_id(db, party)
+    if amount < 0:
+        dr, cr = cr, dr
+    value = abs(amount)
+    kind = 'client' if isinstance(party, Client) else 'supplier'
+    return _post_entry(db, number, on, f'Opening balance - {kind} {party.name}', ORIGIN_OPENING_BALANCE,
+                       [(dr, value, ZERO, f'Opening balance of {party.name}'), (cr, ZERO, value, '')])
+
+
+def remove_opening_balance(db: Session, party) -> None:
+    entry = db.scalars(select(JournalEntry).where(JournalEntry.entry_number == opening_entry_number(party))).first()
+    if entry is not None:
+        _remove_entry(db, entry.id, confirm_unmatch=False)

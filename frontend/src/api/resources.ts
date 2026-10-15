@@ -1,5 +1,6 @@
 import api from './client'
 import { confirmParams } from '../utils/reconcileConfirm'
+import type { FinalizeResult } from '../utils/finalizeMessage'
 import type {
   Category, SubCategory, CategoryKeyword, BankAccount, BankStatement, Transaction, Paginated, AccountType,
   ProfitAndLossReport, BalanceSheetReport, TrialBalanceReport,
@@ -124,7 +125,7 @@ export const transactionsApi = {
   confirm: (id: number): Promise<Transaction> =>
     api.post(`/transactions/${id}/confirm/`).then((r) => r.data),
   /** Lock transactions as final (only categorized ones / transfers are locked). */
-  finalize: (payload: { ids?: number[]; statement?: number }): Promise<{ finalized: number; already_final: number; not_ready: number }> =>
+  finalize: (payload: { ids?: number[]; statement?: number }): Promise<FinalizeResult> =>
     api.post('/transactions/finalize/', payload).then((r) => r.data),
   /** Remove the final lock. */
   reopen: (ids: number[]): Promise<{ reopened: number }> =>

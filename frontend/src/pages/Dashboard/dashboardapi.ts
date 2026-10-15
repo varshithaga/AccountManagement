@@ -55,6 +55,8 @@ export interface DashboardAttention {
     unreconciled: { count: number; amount: number | string; older_than_days: number }
     continuity_issues: { count: number; amount: number | string }
     not_auto_categorized: { count: number }
+    overdue_invoices?: { count: number; amount: number | string }
+    overdue_bills?: { count: number; amount: number | string }
     pending_attention_count: number
 }
 

@@ -5,8 +5,12 @@ export interface LedgerRow {
   id: number
   date: string
   description: string
+  /** The journal voucher the line belongs to (kept as bank_account for the page's column / export). */
   bank_account: string
-  statement_id: number
+  entry_id: number
+  entry_number: string
+  /** The bank statement behind it, when the entry is matched to a bank transaction. */
+  statement_id: number | null
   sub_category_name: string
   debit: string
   credit: string

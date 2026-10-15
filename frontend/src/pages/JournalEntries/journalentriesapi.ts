@@ -91,6 +91,22 @@ export interface JournalAnalysis {
   entries: JournalAnalysisEntry[]
 }
 
+/** One line of a manual entry: an account and either a debit or a credit. */
+export interface ManualEntryLine {
+  sub_category_id: number | null
+  description: string
+  debit: string
+  credit: string
+}
+
+export interface ManualEntryPayload {
+  /** Empty = the next JV-00001 style number. */
+  entry_number: string
+  date: string
+  narration: string
+  lines: ManualEntryLine[]
+}
+
 export interface JournalSummary {
   entries: number
   total_debit: string
@@ -154,6 +170,22 @@ export const journalEntriesApi = {
     const response = await axios.post(createApiUrl('/journal-entries/import/'), {
       source: 'EXCEL', bank_account: bankAccount, dry_run: true, entries,
     }, {
+      headers: await getAuthHeaders(),
+    })
+    return response.data
+  },
+
+  /** A double-entry voucher keyed in by hand. Comes back with any warnings (e.g. a possible duplicate). */
+  createManual: async (payload: ManualEntryPayload): Promise<JournalEntry & { warnings: string[] }> => {
+    const response = await axios.post(createApiUrl('/journal-entries/manual/'), payload, {
+      headers: await getAuthHeaders(),
+    })
+    return response.data
+  },
+
+  /** Replaces a manual entry (only MANUAL entries can be edited). */
+  updateManual: async (id: number, payload: ManualEntryPayload): Promise<JournalEntry & { warnings: string[] }> => {
+    const response = await axios.put(createApiUrl(`/journal-entries/${id}/`), payload, {
       headers: await getAuthHeaders(),
     })
     return response.data

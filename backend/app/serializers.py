@@ -353,6 +353,7 @@ def _party(p) -> dict:
         'id': p.id, 'code': p.code, 'name': p.name, 'contact_person': p.contact_person, 'email': p.email,
         'phone': p.phone, 'gstin': p.gstin, 'pan': p.pan, 'state': p.state,
         'payment_terms_days': p.payment_terms_days, 'opening_balance': money(p.opening_balance),
+        'opening_balance_date': iso(p.opening_balance_date),
         'is_active': p.is_active, 'created_at': iso(p.created_at),
     }
 
@@ -380,7 +381,7 @@ def party_outstanding(db: Session, model, ids: list[int]) -> dict:
     party_col = SalesInvoice.client_id if is_client else PurchaseBill.supplier_id
     pay_col = Payment.client_id if is_client else Payment.supplier_id
     result = {p.id: p.opening_balance or Decimal('0') for p in db.scalars(select(model).where(model.id.in_(ids)))}
-    for pid, due in db.execute(select(party_col, func.sum(doc.total - doc.amount_paid))
+    for pid, due in db.execute(select(party_col, func.sum(doc.total - doc.amount_paid - doc.amount_credited))
                                .where(party_col.in_(ids), doc.status.in_([DocumentStatus.POSTED,
                                                                           DocumentStatus.PARTIALLY_PAID]))
                                .group_by(party_col)):
@@ -417,12 +418,34 @@ def _allocation(a) -> dict:
             'payment_date': p.payment_date.isoformat(), 'method': _v(p.method), 'amount': money(a.amount)}
 
 
+def credit_note(n) -> dict:
+    doc = n.sales_invoice or n.purchase_bill
+    return {
+        'id': n.id, 'note_number': n.note_number, 'kind': _v(n.kind),
+        'sales_invoice': n.sales_invoice_id, 'purchase_bill': n.purchase_bill_id,
+        'document_number': doc.invoice_number if n.sales_invoice else doc.bill_number,
+        'party_name': doc.client.name if n.sales_invoice else doc.supplier.name,
+        'note_date': n.note_date.isoformat(), 'reason': n.reason, 'subtotal': money(n.subtotal),
+        'tax_amount': money(n.tax_amount), 'total': money(n.total), 'status': _v(n.status),
+        'journal_entry': n.journal_entry_id,
+        'journal_entry_number': n.journal_entry.entry_number if n.journal_entry else None,
+        'items': [_item(i) for i in n.items],
+        'created_by': n.created_by.username if n.created_by else None, 'created_at': iso(n.created_at),
+    }
+
+
+def _note_summary(n) -> dict:
+    return {'id': n.id, 'note_number': n.note_number, 'note_date': n.note_date.isoformat(), 'total': money(n.total),
+            'status': _v(n.status), 'reason': n.reason}
+
+
 def sales_invoice(inv: SalesInvoice, detail: bool = True) -> dict:
     data = {
         'id': inv.id, 'invoice_number': inv.invoice_number, 'client': inv.client_id, 'client_name': inv.client.name,
         'invoice_date': inv.invoice_date.isoformat(), 'due_date': inv.due_date.isoformat(),
         'subtotal': money(inv.subtotal), 'tax_amount': money(inv.tax_amount), 'total': money(inv.total),
-        'amount_paid': money(inv.amount_paid), 'balance_due': money(inv.balance_due), 'status': _v(inv.status),
+        'amount_paid': money(inv.amount_paid), 'amount_credited': money(inv.amount_credited),
+        'balance_due': money(inv.balance_due), 'status': _v(inv.status),
         'notes': inv.notes, 'journal_entry': inv.journal_entry_id,
         'journal_entry_number': inv.journal_entry.entry_number if inv.journal_entry else None,
         'created_by': inv.created_by.username if inv.created_by else None, 'created_at': iso(inv.created_at),
@@ -430,6 +453,7 @@ def sales_invoice(inv: SalesInvoice, detail: bool = True) -> dict:
     if detail:
         data['items'] = [_item(i) for i in inv.items]
         data['payments'] = [_allocation(a) for a in inv.allocations]
+        data['credit_notes'] = [_note_summary(n) for n in inv.credit_notes]
     return data
 
 
@@ -438,7 +462,8 @@ def purchase_bill(bill: PurchaseBill, detail: bool = True) -> dict:
         'id': bill.id, 'bill_number': bill.bill_number, 'supplier': bill.supplier_id,
         'supplier_name': bill.supplier.name, 'bill_date': bill.bill_date.isoformat(),
         'due_date': bill.due_date.isoformat(), 'subtotal': money(bill.subtotal), 'tax_amount': money(bill.tax_amount),
-        'total': money(bill.total), 'amount_paid': money(bill.amount_paid), 'balance_due': money(bill.balance_due),
+        'total': money(bill.total), 'amount_paid': money(bill.amount_paid),
+        'amount_credited': money(bill.amount_credited), 'balance_due': money(bill.balance_due),
         'status': _v(bill.status), 'notes': bill.notes, 'file': bill.file_path, 'journal_entry': bill.journal_entry_id,
         'journal_entry_number': bill.journal_entry.entry_number if bill.journal_entry else None,
         'created_by': bill.created_by.username if bill.created_by else None, 'created_at': iso(bill.created_at),
@@ -446,6 +471,7 @@ def purchase_bill(bill: PurchaseBill, detail: bool = True) -> dict:
     if detail:
         data['items'] = [_item(i) for i in bill.items]
         data['payments'] = [_allocation(a) for a in bill.allocations]
+        data['credit_notes'] = [_note_summary(n) for n in bill.credit_notes]
     return data
 
 

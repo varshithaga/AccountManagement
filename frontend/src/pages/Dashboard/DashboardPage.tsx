@@ -4,7 +4,7 @@ import dayjs from 'dayjs'
 import {
   TrendingUp, TrendingDown, ArrowRight, HelpCircle, Copy,
   Wallet, Receipt, UploadCloud, ArrowLeftRight, AlertTriangle,
-  RefreshCw, BarChart3, CheckCircle2, Scale, FileWarning, Wand2, Clock,
+  RefreshCw, BarChart3, CheckCircle2, Scale, FileWarning, Wand2, Clock, FileText, ShoppingCart,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { dashboardApi, DashboardOverview, type ReconciliationAccountStatus } from './dashboardapi'
@@ -313,6 +313,8 @@ export default function DashboardPage() {
   const unreconciledCount = attention.unreconciled.count
   const continuityCount = attention.continuity_issues.count
   const notAutoCategorizedCount = attention.not_auto_categorized.count
+  const overdueInvoices = attention.overdue_invoices ?? { count: 0, amount: 0 }
+  const overdueBills = attention.overdue_bills ?? { count: 0, amount: 0 }
 
   const previous = kpis.previous
   const vsLabel = previous ? rangeLabel(previous.date_from, previous.date_to) : ''
@@ -561,6 +563,37 @@ export default function DashboardPage() {
                 buttonLabel="Open"
                 buttonColor="primary"
                 onClick={canOpenStatements ? () => navigate('/bank-statements') : undefined}
+              />
+            )}
+
+            {/* OVERDUE SALES INVOICES */}
+            {overdueInvoices.count > 0 && (
+              <AttentionItem
+                tone="danger"
+                icon={<FileText className="text-danger" />}
+                count={overdueInvoices.count}
+                title={`Overdue invoice${overdueInvoices.count === 1 ? '' : 's'}`}
+                subtitle="Past their due date and not fully paid by the client"
+                amount={formatAmount(overdueInvoices.amount)}
+                buttonLabel="Follow up"
+                buttonColor="error"
+                onClick={hasPage('receivables_payables') ? () => navigate('/receivables-payables')
+                  : hasPage('sales_invoices') ? () => navigate('/sales-invoices') : undefined}
+              />
+            )}
+
+            {/* OVERDUE PURCHASE BILLS */}
+            {overdueBills.count > 0 && (
+              <AttentionItem
+                tone="warning"
+                icon={<ShoppingCart className="text-warning" />}
+                count={overdueBills.count}
+                title={`Overdue bill${overdueBills.count === 1 ? '' : 's'}`}
+                subtitle="Supplier bills past their due date and not fully paid"
+                amount={formatAmount(overdueBills.amount)}
+                buttonLabel="Pay"
+                buttonColor="warning"
+                onClick={hasPage('purchase_bills') ? () => navigate('/purchase-bills') : undefined}
               />
             )}
           </div>

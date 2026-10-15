@@ -699,14 +699,14 @@ export default function BalanceSheetPage() {
                       <div className="mb-1 flex items-center gap-1.5">
                         <HelpCircle className="h-5 w-5 text-warning-text" />
                         <span className="text-sm font-bold text-warning-text">
-                          Uncategorized Balance ({report.uncategorized_count} entries)
+                          Not in the books yet ({report.uncategorized_count} bank transaction{report.uncategorized_count === 1 ? '' : 's'})
                         </span>
                       </div>
                       <p className="my-1 text-sm font-bold text-warning-text">
                         {formatAmount(report.uncategorized_net_amount)}
                       </p>
                       <p className="mb-2 text-xs text-muted">
-                        These transactions have not been assigned to a valid Balance Sheet account.
+                        Bank transactions up to this date that are not categorized and final yet (or matched in Bank Reconciliation) - they are in no figure above.
                       </p>
                       <Button
                         variant="outlined"

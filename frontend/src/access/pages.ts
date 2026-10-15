@@ -95,7 +95,7 @@ export const PAGE_ACTIONS: Partial<Record<PageKey, PageAction[]>> = {
   bank_accounts: ALL_ACTIONS,
   bank_statements: ALL_ACTIONS,
   transactions: ALL_ACTIONS,
-  journal_entries: ['create', 'delete'], // entries are imported and deleted, never edited
+  journal_entries: ALL_ACTIONS, // edit = change a manual entry; imported and posted ones are never edited
   clients: ALL_ACTIONS,
   suppliers: ALL_ACTIONS,
   products: ALL_ACTIONS,

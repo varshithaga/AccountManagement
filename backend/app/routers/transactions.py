@@ -18,6 +18,7 @@ from ..schemas import IdsIn, TransactionIn
 from ..services import period_close
 from ..services import reconciliation as recon
 from ..services.categorization import clean_description, create_rule_from_transaction, propagate_manual_match
+from ..services.posting import post_transactions, unpost_transactions
 from ..services.filters import TXN_IS_TRANSFER, TXN_MATCHED, TXN_UNCATEGORIZED, TXN_UNMATCHED, txn_of_account
 from ..services.reports import resolve_period
 from ..services.transfers import detect_transfers
@@ -365,20 +366,42 @@ def finalize(body: IdsIn, db: Session = Depends(get_db)):
     db.flush()
     for t in newly_confirmed:
         propagate_manual_match(db, t)  # same as confirming: teaches similar narrations
+    # Final = in the books: post each one to the journal unless it is already matched to a journal line.
+    posting = post_transactions(db, ready)
     db.commit()
-    return {"finalized": len(ready), "already_final": already_final, "not_ready": len(candidates) - len(ready)}
+    return {"finalized": len(ready), "already_final": already_final, "not_ready": len(candidates) - len(ready),
+            "posting": posting}
+
+
+@router.post("/post-to-books/", dependencies=[_edit()])
+def post_to_books(body: IdsIn, db: Session = Depends(get_db)):
+    """Posts final transactions (ids, a statement, or - with neither - every final one) that aren't in the
+    books yet, e.g. ones finalized before their bank account had a GL account. Already-matched ones are
+    left alone, so it is safe to run again."""
+    where = [Transaction.is_final.is_(True)]
+    if body.ids:
+        where.append(Transaction.id.in_(_id_list(body.ids)))
+    elif body.statement:
+        where.append(Transaction.statement_id == body.statement)
+    txns = db.scalars(select(Transaction).where(*where).order_by(Transaction.date, Transaction.id)).all()
+    posting = post_transactions(db, txns)
+    db.commit()
+    return posting
 
 
 @router.post("/reopen/", dependencies=[_edit()])
 def reopen(body: IdsIn, db: Session = Depends(get_db)):
-    """Removes the final lock (the transactions stay confirmed)."""
+    """Removes the final lock (the transactions stay confirmed) and takes their posted journal entries out
+    of the books. Entries they are matched to from elsewhere (imports, payments) are left alone."""
     ids = _id_list(body.ids)
     # A closed period's transactions stay final - that is what keeps its reports unchanged.
     period_guard(period_close.guard_transactions, db, select(Transaction.id).where(Transaction.id.in_(ids)),
                  "transactions dated in that period cannot be reopened")
     txns = db.scalars(select(Transaction).where(Transaction.id.in_(ids), Transaction.is_final.is_(True))).all()
+    # Reopened = out of the books again until it is made final once more (its category may change).
+    unposted = unpost_transactions(db, [t.id for t in txns])
     for t in txns:
         t.is_final = False
         t.finalized_at = None
     db.commit()
-    return {"reopened": len(txns)}
+    return {"reopened": len(txns), "removed_from_books": unposted}

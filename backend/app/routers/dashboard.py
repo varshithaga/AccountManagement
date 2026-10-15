@@ -11,12 +11,12 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..deps import Access
 from ..models import (
-    AccountType, BaiCode, BankAccount, BankStatement, Category, CategoryKeyword, DocumentStatus, JournalEntryLine,
+    BaiCode, BankAccount, BankStatement, Category, CategoryKeyword, DocumentStatus, JournalEntryLine,
     PurchaseBill, SalesInvoice, SubCategory, Transaction, TransactionStatus,
 )
 from ..services.continuity import get_continuity_summary
 from ..services.filters import (
-    LINE_UNMATCHED, TXN_NOT_DUPLICATE_COPY, TXN_NOT_REVIEW, TXN_NOT_TRANSFER, TXN_UNCATEGORIZED, TXN_UNMATCHED,
+    LINE_UNMATCHED, TXN_NOT_DUPLICATE_COPY, TXN_NOT_TRANSFER, TXN_UNCATEGORIZED, TXN_UNMATCHED,
     txn_of_account,
 )
 from ..services.reconciliation import locks_by_account
@@ -48,21 +48,9 @@ def _sums(db: Session, *where) -> tuple[Decimal, Decimal]:
 
 
 def _income_and_expense(db: Session, date_from, date_to, account_id=None) -> tuple[Decimal, Decimal]:
-    """(income, expense) from categorized, non-review bank transactions in [date_from, date_to]."""
-    where = [TXN_NOT_DUPLICATE_COPY, Transaction.category_id.is_not(None), TXN_NOT_REVIEW]
-    if date_from:
-        where.append(Transaction.date >= date_from)
-    if date_to:
-        where.append(Transaction.date <= date_to)
-    if account_id:
-        where.append(txn_of_account(account_id))
-
-    def of_type(account_type):
-        return Transaction.category_id.in_(select(Category.id).where(Category.account_type == account_type))
-
-    inc_d, inc_c = _sums(db, *where, of_type(AccountType.INCOME))
-    exp_d, exp_c = _sums(db, *where, of_type(AccountType.EXPENSE))
-    return inc_c - inc_d, exp_d - exp_c
+    """(income, expense) in the books (the journal) for [date_from, date_to] - the same figures as the P&L."""
+    pnl = build_profit_and_loss(db, date_from=date_from, date_to=date_to, account_id=account_id)
+    return pnl['income']['total'], pnl['expense']['total']
 
 
 def _previous_window(date_from, date_to):
@@ -172,7 +160,7 @@ def attention(request: Request, db: Session = Depends(get_db)):
     overdue = {}
     for key, model, date_col in (("overdue_invoices", SalesInvoice, SalesInvoice.due_date),
                                  ("overdue_bills", PurchaseBill, PurchaseBill.due_date)):
-        n, amount = db.execute(select(func.count(model.id), func.coalesce(func.sum(model.total - model.amount_paid), 0))
+        n, amount = db.execute(select(func.count(model.id), func.coalesce(func.sum(model.total - model.amount_paid - model.amount_credited), 0))
                                .where(model.status.in_([DocumentStatus.POSTED, DocumentStatus.PARTIALLY_PAID]),
                                       date_col < today())).one()
         overdue[key] = {"count": n, "amount": Decimal(amount)}

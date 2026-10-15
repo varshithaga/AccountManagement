@@ -47,7 +47,10 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from ..models import BankAccount, Category, JournalEntry, JournalEntryLine, JournalImportBatch, JournalImportSource, SubCategory
+from ..models import (
+    BankAccount, Category, JournalEntry, JournalEntryLine, JournalImportBatch, JournalImportSource, ReconciliationMatch,
+    SubCategory,
+)
 from .period_close import closed_through, journal_entry_error
 from .reconciliation import bank_gl_locks, journal_lock_error
 
@@ -480,3 +483,114 @@ def analyse_import_request(db: Session, entries, source, bank_account: Optional[
     _check_request(entries, source)
     results = analyse_journal_entries(db, entries, bank_account)
     return {'summary': summarize(results, bank_account), 'entries': public_results(results)}
+
+
+# ---------------------------------------------------------------------------
+# Manual entries - keyed in on the Journal Entries page
+# ---------------------------------------------------------------------------
+
+ORIGIN_MANUAL = 'MANUAL'
+
+
+def save_manual_entry(db: Session, data: dict, entry: Optional[JournalEntry] = None) -> tuple[JournalEntry, list[str]]:
+    """Creates (or, with `entry`, replaces) a manual double-entry voucher. Every line is a debit or a
+    credit on a Chart of Accounts account; there must be at least two lines and total debits must
+    equal total credits. The same locks as imports apply: nothing dated in a closed period, and no
+    bank line in a month signed off as reconciled. Returns (entry, warnings); raises
+    JournalImportError with every problem found. Does not commit."""
+    from .invoicing import next_number  # local import: invoicing imports this module's neighbours
+
+    errors: list[str] = []
+    warnings: list[str] = []
+    if entry is not None:
+        if entry.origin != ORIGIN_MANUAL:
+            raise JournalImportError(['Only manual entries can be edited - imported entries and entries posted '
+                                      'from invoices, bills or payments are changed at their source.'])
+        reconciled = db.scalar(select(JournalEntryLine.id).join(ReconciliationMatch,
+                                                                ReconciliationMatch.journal_line_id == JournalEntryLine.id)
+                               .where(JournalEntryLine.entry_id == entry.id).limit(1))
+        if reconciled:
+            raise JournalImportError(['This entry has a line reconciled with a bank transaction - unmatch it in '
+                                      'Bank Reconciliation before editing the entry.'])
+
+    number = str(data.get('entry_number') or '').strip() or (entry.entry_number if entry else '') \
+        or next_number(db, JournalEntry.entry_number, 'JV')
+    if len(number) > MAX_NUMBER_LEN:
+        errors.append(f'entry_number is longer than {MAX_NUMBER_LEN} characters')
+    elif db.scalar(select(JournalEntry.id).where(JournalEntry.entry_number == number,
+                                                 JournalEntry.id != (entry.id if entry else 0))):
+        errors.append(f'entry number {number} is already used')
+
+    entry_date = data.get('date')
+    if isinstance(entry_date, str):
+        try:
+            entry_date = date.fromisoformat(entry_date)
+        except ValueError:
+            entry_date = None
+    if not entry_date:
+        errors.append('date is required (YYYY-MM-DD)')
+    narration = str(data.get('narration') or '').strip()
+    if len(narration) > MAX_TEXT_LEN:
+        errors.append(f'narration is longer than {MAX_TEXT_LEN} characters')
+
+    lines = data.get('lines') or []
+    if len(lines) < 2:
+        errors.append('needs at least 2 lines - a debit and a credit')
+    subs = {s.id: s for s in db.scalars(select(SubCategory).where(
+        SubCategory.id.in_([l.get('sub_category_id') for l in lines if l.get('sub_category_id')])))}
+    new_lines, total_debit, total_credit = [], ZERO, ZERO
+    for j, line in enumerate(lines, start=1):
+        line_errors = []
+        sub = subs.get(line.get('sub_category_id'))
+        if sub is None:
+            line_errors.append('choose an account')
+        debit, err = _parse_amount(line.get('debit'))
+        if err:
+            line_errors.append(f'debit {err}')
+        credit, err = _parse_amount(line.get('credit'))
+        if err:
+            line_errors.append(f'credit {err}')
+        if debit is not None and credit is not None and (debit > 0) == (credit > 0):
+            line_errors.append('enter either a debit or a credit (exactly one, greater than 0)')
+        description = str(line.get('description') or '').strip()
+        if len(description) > MAX_TEXT_LEN:
+            line_errors.append(f'description is longer than {MAX_TEXT_LEN} characters')
+        if line_errors:
+            errors.append(f'line {j}: ' + ', '.join(line_errors))
+            continue
+        total_debit += debit
+        total_credit += credit
+        new_lines.append(SimpleNamespace(sub_category_id=sub.id, description=description, debit=debit, credit=credit))
+    if new_lines and len(new_lines) == len(lines) and total_debit != total_credit:
+        errors.append(f'is not balanced - total debit {total_debit} vs total credit {total_credit} '
+                      f'(difference {abs(total_debit - total_credit)})')
+    if errors:
+        raise JournalImportError(errors)
+
+    # Locks: the new date / accounts, and - when editing - what the entry was before.
+    end = closed_through(db)
+    gl_locks = bank_gl_locks(db)
+    checks = [(entry_date, [l.sub_category_id for l in new_lines])]
+    if entry is not None:
+        checks.append((entry.date, [l.sub_category_id for l in entry.lines]))
+    for check_date, sub_ids in checks:
+        message = journal_entry_error(check_date, end) or journal_lock_error(check_date, sub_ids, gl_locks)
+        if message:
+            raise JournalImportError([f'Entry {number} {message}.'])
+
+    fp = fingerprint(entry_date, new_lines)
+    for other in db.scalars(select(JournalEntry).where(JournalEntry.date == entry_date,
+                                                       JournalEntry.id != (entry.id if entry else 0))
+                            .options(selectinload(JournalEntry.lines))):
+        if fingerprint(other.date, other.lines) == fp:
+            warnings.append(f'Same date, accounts and amounts as entry {other.entry_number} - check it is not entered twice.')
+            break
+
+    if entry is None:
+        entry = JournalEntry(origin=ORIGIN_MANUAL)
+        db.add(entry)
+    entry.entry_number, entry.date, entry.narration = number, entry_date, narration
+    entry.lines = [JournalEntryLine(sub_category_id=l.sub_category_id, description=l.description, debit=l.debit,
+                                    credit=l.credit) for l in new_lines]
+    db.flush()
+    return entry, warnings

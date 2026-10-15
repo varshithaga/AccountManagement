@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState, useMemo } from 'react'
+import { describeFinalize } from '../../utils/finalizeMessage'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import {
   Plus, Trash2, AlertTriangle, Receipt, Search, X, MoreVertical, HelpCircle,
   ArrowDown, ArrowUp, Landmark, Tag, Sparkles, ArrowRightLeft, Check,
-  Download, Lock, LockOpen, GitMerge,
+  Download, Lock, LockOpen, GitMerge, BookOpenCheck,
 } from 'lucide-react'
 import { transactionsApi } from './transactionsapi'
 import { categoriesApi, subCategoriesApi } from '../Categories/categoriesapi'
@@ -133,12 +134,6 @@ export default function TransactionsPage() {
     }
   }
 
-  const describeFinalize = (res: { finalized: number; already_final: number; not_ready: number }) => {
-    const parts = [`${res.finalized} transaction(s) made final.`]
-    if (res.already_final) parts.push(`${res.already_final} were already final.`)
-    if (res.not_ready) parts.push(`${res.not_ready} skipped - still Needs Review or Uncategorized; categorize them first.`)
-    return parts.join('\n')
-  }
 
   const handleFinalizeSelected = async () => {
     if (!selectedIds.length) return
@@ -404,6 +399,27 @@ export default function TransactionsPage() {
 
   const hasActiveFilters = Boolean(search || account || categoryFilter || uncategorizedOnly || duplicatesOnly || confirmedOnly || finalOnly || categorizationSourceFilter || statusFilter || reconciledFilter || period !== 'this_month')
 
+  const [postingToBooks, setPostingToBooks] = useState(false)
+  const handlePostToBooks = async () => {
+    setPostingToBooks(true)
+    try {
+      const res = await transactionsApi.postToBooks()
+      window.alert(res.posted
+        ? `${res.posted} final transaction(s) posted to the books.`
+          + (res.no_gl_account ? `
+${res.no_gl_account} still waiting - their bank account has no GL account.` : '')
+        : 'Every final transaction is already in the books.'
+          + (res.no_gl_account ? `
+${res.no_gl_account} can't be posted - their bank account has no GL account.` : ''))
+      await fetchTransactions()
+      await fetchSummaryMetrics()
+    } catch {
+      window.alert('Failed to post transactions to the books.')
+    } finally {
+      setPostingToBooks(false)
+    }
+  }
+
   const [detectingTransfers, setDetectingTransfers] = useState(false)
   const handleDetectTransfers = async () => {
     setDetectingTransfers(true)
@@ -495,6 +511,11 @@ export default function TransactionsPage() {
           {canEdit && (
             <Button variant="outlined" icon={<ArrowRightLeft className="h-4 w-4" />} onClick={handleDetectTransfers} disabled={detectingTransfers}>
               {detectingTransfers ? 'Detecting...' : 'Detect Transfers'}
+            </Button>
+          )}
+          {canEdit && (
+            <Button variant="outlined" icon={<BookOpenCheck className="h-4 w-4" />} onClick={handlePostToBooks} disabled={postingToBooks}>
+              {postingToBooks ? 'Posting...' : 'Post to books'}
             </Button>
           )}
           {can('bank_statements', 'create') && (

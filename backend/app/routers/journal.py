@@ -8,17 +8,19 @@ from sqlalchemy import exists, func, not_, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from .. import serializers as ser
-from ..access import CREATE, DELETE
+from ..access import CREATE, DELETE, EDIT
 from ..database import get_db
 from ..deps import Access
 from ..errors import APIError, bad_request, not_found
 from ..models import BankAccount, JournalEntry, JournalEntryLine, JournalImportBatch, SubCategory
-from ..schemas import JournalImportIn, MonthScopeIn
+from ..schemas import JournalImportIn, ManualEntryIn, MonthScopeIn
 from ..services import period_close
 from ..services import reconciliation as recon
 from ..services.filters import LINE_IS_BANK, LINE_MATCHED, LINE_UNMATCHED
 from ..services.invoicing import guard_entry_not_from_document
-from ..services.journal_import import JournalImportError, analyse_import_request, import_journal_entries, resolve_bank_account
+from ..services.journal_import import (
+    JournalImportError, analyse_import_request, import_journal_entries, resolve_bank_account, save_manual_entry,
+)
 from ..utils import apply_ordering, get_or_404, is_true, paginate
 from .common import confirm_unmatch, period_guard, reconcile_guard
 
@@ -31,7 +33,8 @@ def _line_exists(*where):
 
 
 def _filtered(request: Request, stmt=None):
-    """?search=, ?date_from=, ?date_to=, ?source=EXCEL|JSON|API|SALES_INVOICE|PURCHASE_BILL|PAYMENT,
+    """?search=, ?date_from=, ?date_to=, ?source=EXCEL|JSON|API (imports) or an origin - MANUAL, BANK,
+    SALES_INVOICE, PURCHASE_BILL, PAYMENT, CREDIT_NOTE, OPENING_BALANCE,
     ?account=<sub-category id>, ?batch=<id>, ?bank_account=<id>, ?reconciled=true|false."""
     p = request.query_params
     stmt = select(JournalEntry) if stmt is None else stmt
@@ -49,7 +52,7 @@ def _filtered(request: Request, stmt=None):
         stmt = stmt.where(JournalEntry.date <= p["date_to"])
     if p.get("source"):
         source = p["source"]
-        if source in ("SALES_INVOICE", "PURCHASE_BILL", "PAYMENT"):
+        if source not in ("EXCEL", "JSON", "API"):  # entries the app posted carry their origin
             stmt = stmt.where(JournalEntry.origin == source)
         else:
             stmt = stmt.where(JournalEntry.batch_id.in_(select(JournalImportBatch.id)
@@ -124,6 +127,41 @@ def import_entries(body: JournalImportIn, response: Response, db: Session = Depe
         raise APIError(400, {"error": exc.errors})
     response.status_code = 201 if result["created"] else 200
     return result
+
+
+def _manual_lines(body: ManualEntryIn) -> dict:
+    data = body.model_dump()
+    data["lines"] = [l.model_dump() for l in body.lines]
+    return data
+
+
+@router.post("/journal-entries/manual/", status_code=201, dependencies=[Depends(Access("journal_entries", action=CREATE))])
+def create_manual_entry(body: ManualEntryIn, db: Session = Depends(get_db)):
+    """A double-entry voucher keyed in by hand: {"entry_number"? (default JV-00001...), "date", "narration",
+    "lines": [{"sub_category_id", "debit" | "credit", "description"}]}. At least two lines, each a debit or a
+    credit, and total debits must equal total credits. Returns the entry plus any "warnings"."""
+    try:
+        entry, warnings = save_manual_entry(db, _manual_lines(body))
+        db.commit()
+    except JournalImportError as exc:
+        db.rollback()
+        raise APIError(400, {"error": exc.errors})
+    return {**_entries(db, [entry])[0], "warnings": warnings}
+
+
+@router.put("/journal-entries/{entry_id:int}/", dependencies=[Depends(Access("journal_entries", action=EDIT))])
+def update_manual_entry(entry_id: int, body: ManualEntryIn, db: Session = Depends(get_db)):
+    """Replaces a manual entry's number, date, narration and lines (same rules as creating one).
+    Imported entries and entries posted from invoices, bills or payments can't be edited."""
+    entry = get_or_404(db, JournalEntry, entry_id, "JournalEntry")
+    try:
+        entry, warnings = save_manual_entry(db, _manual_lines(body), entry)
+        db.commit()
+    except JournalImportError as exc:
+        db.rollback()
+        raise APIError(400, {"error": exc.errors})
+    db.refresh(entry)
+    return {**_entries(db, [entry])[0], "warnings": warnings}
 
 
 # ---- Testing tool: delete one bank's journal entries for one month ---------------------------

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { describeFinalize } from '../../utils/finalizeMessage'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import dayjs from 'dayjs'
@@ -232,12 +233,6 @@ export default function BankStatementDetailPage() {
     }
   }
 
-  const describeFinalize = (res: { finalized: number; already_final: number; not_ready: number }) => {
-    const parts = [`${res.finalized} transaction(s) made final.`]
-    if (res.already_final) parts.push(`${res.already_final} were already final.`)
-    if (res.not_ready) parts.push(`${res.not_ready} skipped - still Needs Review or Uncategorized; categorize them first.`)
-    return parts.join('\n')
-  }
 
   const FINAL_WARNING = 'Final transactions are locked: their category cannot be changed and they cannot be deleted '
     + '(nor this statement deleted or re-parsed) until reopened.'

@@ -6,15 +6,16 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from .. import serializers as ser
-from ..access import EDIT
+from ..access import CREATE, DELETE, EDIT, user_actions, user_pages
 from ..database import get_db
 from ..deps import Access
-from ..errors import bad_request
+from ..errors import bad_request, forbidden
 from ..models import (
+    CreditNote, CreditNoteItem, NoteKind,
     DocumentStatus, Payment, PaymentAllocation, PaymentDirection, PurchaseBill, PurchaseBillItem, SalesInvoice,
     SalesInvoiceItem, User,
 )
-from ..schemas import AllocateIn, ConfirmIn, PaymentIn, PaymentUpdateIn, PurchaseBillIn, SalesInvoiceIn
+from ..schemas import AllocateIn, ConfirmIn, CreditNoteIn, PaymentIn, PaymentUpdateIn, PurchaseBillIn, SalesInvoiceIn
 from ..services import invoicing
 from ..services.invoicing import InvoicingError
 from ..utils import apply_ordering, apply_search, get_or_404, paginate, today
@@ -44,12 +45,13 @@ def _items(body) -> dict:
 def _status_summary(db: Session, model) -> dict:
     """Counts and amounts per status, plus what is overdue."""
     by_status = {s.value: {"count": 0, "total": 0, "balance_due": 0} for s in DocumentStatus}
-    for status, n, total, paid in db.execute(select(model.status, func.count(model.id), func.sum(model.total),
-                                                    func.sum(model.amount_paid)).group_by(model.status)):
-        by_status[status.value] = {"count": n, "total": total or 0, "balance_due": (total or 0) - (paid or 0)}
-    n, due = db.execute(select(func.count(model.id), func.coalesce(func.sum(model.total - model.amount_paid), 0))
+    for status, n, total, due in db.execute(select(model.status, func.count(model.id), func.sum(model.total),
+                                                   func.sum(model.total - model.amount_paid - model.amount_credited))
+                                            .group_by(model.status)):
+        by_status[status.value] = {"count": n, "total": total or 0, "balance_due": due or 0}
+    n, due = db.execute(select(func.count(model.id), func.coalesce(func.sum(model.total - model.amount_paid - model.amount_credited), 0))
                         .where(model.status.in_(invoicing.OPEN_STATUSES), model.due_date < today())).one()
-    outstanding = db.scalar(select(func.coalesce(func.sum(model.total - model.amount_paid), 0))
+    outstanding = db.scalar(select(func.coalesce(func.sum(model.total - model.amount_paid - model.amount_credited), 0))
                             .where(model.status.in_(invoicing.OPEN_STATUSES)))
     return {"by_status": by_status, "outstanding": outstanding, "overdue": {"count": n, "amount": due}}
 
@@ -69,6 +71,7 @@ def _invoice_stmt():
         selectinload(SalesInvoice.items).joinedload(SalesInvoiceItem.tax_rate),
         selectinload(SalesInvoice.items).joinedload(SalesInvoiceItem.product),
         selectinload(SalesInvoice.allocations).joinedload(PaymentAllocation.payment),
+        selectinload(SalesInvoice.credit_notes),
     )
 
 
@@ -174,6 +177,7 @@ def _bill_stmt():
         selectinload(PurchaseBill.items).joinedload(PurchaseBillItem.tax_rate),
         selectinload(PurchaseBill.items).joinedload(PurchaseBillItem.product),
         selectinload(PurchaseBill.allocations).joinedload(PaymentAllocation.payment),
+        selectinload(PurchaseBill.credit_notes),
     )
 
 
@@ -350,3 +354,85 @@ def remove_allocation(payment_id: int, allocation_id: int, db: Session = Depends
         raise bad_request("That allocation is not part of this payment.")
     _run(db, invoicing.remove_allocation, db, payment, allocation)
     return ser.payment(_payment(db, payment_id))
+
+
+# ---------------------------------------------------------------------------
+# Credit notes (on sales invoices) and debit notes (on purchase bills)
+# ---------------------------------------------------------------------------
+
+note_access = Access("sales_invoices", "purchase_bills")
+NOTE_PAGE = {NoteKind.SALES: "sales_invoices", NoteKind.PURCHASE: "purchase_bills"}
+
+
+def _require_right(user: User, kind: NoteKind, right: str) -> None:
+    """Notes use the rights of their document's page: Sales Invoices for credit notes, Purchase Bills for debit notes."""
+    if right not in user_actions(user).get(NOTE_PAGE[kind], []):
+        raise forbidden(f"Your role does not have the {right} right on this page.")
+
+
+def _note_stmt():
+    return select(CreditNote).options(
+        joinedload(CreditNote.sales_invoice).joinedload(SalesInvoice.client),
+        joinedload(CreditNote.purchase_bill).joinedload(PurchaseBill.supplier),
+        joinedload(CreditNote.journal_entry), joinedload(CreditNote.created_by),
+        selectinload(CreditNote.items).joinedload(CreditNoteItem.account),
+        selectinload(CreditNote.items).joinedload(CreditNoteItem.tax_rate),
+        selectinload(CreditNote.items).joinedload(CreditNoteItem.product),
+    )
+
+
+def _note(db: Session, note_id: int) -> CreditNote:
+    return get_or_404(db, CreditNote, note_id, "CreditNote")
+
+
+@router.get("/credit-notes/")
+def list_notes(db: Session = Depends(get_db), user: User = Depends(note_access), kind: Optional[NoteKind] = None,
+               sales_invoice: Optional[int] = None, purchase_bill: Optional[int] = None, search: Optional[str] = None,
+               page: Optional[str] = None, limit: Optional[str] = None):
+    """?kind=SALES (credit notes) | PURCHASE (debit notes), ?sales_invoice=, ?purchase_bill=, ?search=."""
+    stmt = apply_search(_note_stmt(), search, CreditNote.note_number, CreditNote.reason)
+    visible = [k for k, page_key in NOTE_PAGE.items() if page_key in user_pages(user)]
+    if kind:
+        stmt = stmt.where(CreditNote.kind == kind)
+    if sales_invoice:
+        stmt = stmt.where(CreditNote.sales_invoice_id == sales_invoice)
+    if purchase_bill:
+        stmt = stmt.where(CreditNote.purchase_bill_id == purchase_bill)
+    stmt = stmt.where(CreditNote.kind.in_(visible)).order_by(CreditNote.note_date.desc(), CreditNote.id.desc())
+    return paginate(db, stmt, page, limit, ser.credit_note)
+
+
+@router.post("/credit-notes/", status_code=201)
+def create_note(body: CreditNoteIn, db: Session = Depends(get_db), user: User = Depends(note_access)):
+    """Creates and posts a credit note ({"sales_invoice_id", ...}) or debit note ({"purchase_bill_id", ...}).
+    Its lines reverse the income / expense and GST they cover; it lowers the document's balance due."""
+    _require_right(user, NoteKind.SALES if body.sales_invoice_id else NoteKind.PURCHASE, CREATE)
+    data = body.model_dump()
+    data["items"] = [i.model_dump(exclude_unset=True) for i in body.items]
+    note = _run(db, invoicing.create_credit_note, db, data, user)
+    return ser.credit_note(_note(db, note.id))
+
+
+@router.get("/credit-notes/{note_id:int}/", dependencies=[Depends(note_access)])
+def get_note(note_id: int, db: Session = Depends(get_db)):
+    return ser.credit_note(_note(db, note_id))
+
+
+@router.post("/credit-notes/{note_id:int}/cancel/")
+def cancel_note(note_id: int, request: Request, body: Optional[ConfirmIn] = None, db: Session = Depends(get_db),
+                user: User = Depends(note_access)):
+    """Cancels the note: its journal entry is deleted and the amount goes back onto the invoice / bill."""
+    note = _note(db, note_id)
+    _require_right(user, note.kind, EDIT)
+    confirm = confirm_unmatch(request, body.model_dump() if body else None)
+    _run(db, invoicing.cancel_credit_note, db, note, confirm)
+    return ser.credit_note(_note(db, note_id))
+
+
+@router.delete("/credit-notes/{note_id:int}/", status_code=204)
+def delete_note(note_id: int, db: Session = Depends(get_db), user: User = Depends(note_access)):
+    """Only cancelled notes can be deleted."""
+    note = _note(db, note_id)
+    _require_right(user, note.kind, DELETE)
+    _run(db, invoicing.delete_credit_note, db, note)
+    return Response(status_code=204)
