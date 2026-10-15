@@ -131,7 +131,7 @@ export default function AuthPage({ initialMode }: AuthPageProps) {
               <BarChart3 className="h-5 w-5" />
             </div>
             <div>
-              <p className="font-display text-lg font-bold leading-tight text-white">Ledgerline</p>
+              <p className="font-display text-lg font-bold leading-tight text-white">LedgerDesk</p>
               <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-highlight">Pro suite</p>
             </div>
           </div>
@@ -191,7 +191,7 @@ export default function AuthPage({ initialMode }: AuthPageProps) {
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white">
               <BarChart3 className="h-[18px] w-[18px]" />
             </div>
-            <p className="font-display text-base font-bold text-ink">Ledgerline</p>
+            <p className="font-display text-base font-bold text-ink">LedgerDesk</p>
           </div>
 
           <h2 className="font-display text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">

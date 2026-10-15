@@ -4,7 +4,7 @@ from test_api import _gst18, d
 
 
 def _set_company(admin, state="Karnataka"):
-    r = admin.put("/api/period-close/", json={"company_name": "Ledgerline Pvt Ltd", "company_gstin": "29aaaca1234a1z5",
+    r = admin.put("/api/period-close/", json={"company_name": "LedgerDesk Pvt Ltd", "company_gstin": "29aaaca1234a1z5",
                                               "company_state": state, "company_address": "1 MG Road\nBengaluru"})
     assert r.status_code == 200, r.text
     return r.json()["company"]
@@ -22,7 +22,7 @@ def _invoice(admin, client_id, price="1000", post=True):
 def test_company_details(admin):
     company = _set_company(admin)
     assert company["gstin"] == "29AAACA1234A1Z5" and company["state"] == "Karnataka"
-    assert admin.get("/api/period-close/company/").json()["name"] == "Ledgerline Pvt Ltd"
+    assert admin.get("/api/period-close/company/").json()["name"] == "LedgerDesk Pvt Ltd"
     assert admin.put("/api/period-close/", json={"company_gstin": "123"}).status_code == 400
 
 

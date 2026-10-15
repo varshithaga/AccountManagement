@@ -137,7 +137,7 @@ export default function Layout() {
           <BarChart3 className="h-5 w-5 stroke-[2]" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-display text-lg font-bold leading-tight text-white">Ledgerline</p>
+          <p className="font-display text-lg font-bold leading-tight text-white">LedgerDesk</p>
           <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-highlight">Pro suite</p>
         </div>
         {/* Mobile close button */}

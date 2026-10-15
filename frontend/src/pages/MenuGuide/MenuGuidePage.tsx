@@ -159,7 +159,7 @@ export default function MenuGuidePage() {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-ink">
-                    Ledgerline
+                    LedgerDesk
                   </h3>
                   <span className="text-[0.62rem] font-bold tracking-wider text-primary bg-primary-soft px-1.5 py-0.5 rounded">
                     PRO ACCOUNTING
@@ -715,7 +715,7 @@ export default function MenuGuidePage() {
               {selectedMenuId === 'menu_guide' && (
                 <div className="space-y-4 text-xs">
                   <div className="p-3 rounded-xl bg-primary-soft text-ink font-medium">
-                    <strong>How it works:</strong> Complete interactive menu reference & learning system to help users navigate and understand every feature of Ledgerline.
+                    <strong>How it works:</strong> Complete interactive menu reference & learning system to help users navigate and understand every feature of LedgerDesk.
                   </div>
 
                   <div className="p-4 rounded-2xl border border-border bg-slate-50 dark:bg-slate-800/40 space-y-2">

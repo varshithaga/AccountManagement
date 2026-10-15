@@ -1,4 +1,4 @@
-# Accounting API (FastAPI + SQLAlchemy 2.0)
+# LedgerDesk API (FastAPI + SQLAlchemy 2.0)
 
 FastAPI port of `accounting_prototype/backend_v2` (Django), with clients, suppliers, products,
 sales invoices, purchase bills and payments added. URLs and JSON shapes match the Django API,

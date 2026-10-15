@@ -1,4 +1,4 @@
-# Account Management - frontend
+# LedgerDesk - frontend
 
 React 19 + TypeScript + Vite + Tailwind. Based on `accounting_prototype/frontend_v2`, pointed at the
 FastAPI backend in `../backend`, with Sales & Purchases pages added.

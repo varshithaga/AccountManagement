@@ -26,7 +26,7 @@ afterEach(() => {
 
 describe('CompanyPanel', () => {
   it('fills the state in from the GSTIN and saves what the server returns', async () => {
-    const saved = { ...blank, name: 'Ledgerline', gstin: '29AAACA1234A1Z5', state: 'Karnataka' }
+    const saved = { ...blank, name: 'LedgerDesk', gstin: '29AAACA1234A1Z5', state: 'Karnataka' }
     vi.mocked(periodCloseApi.saveCompany).mockResolvedValue(stateWith(saved))
     const onSaved = vi.fn()
     render(<Page onSaved={onSaved} />)
@@ -34,14 +34,14 @@ describe('CompanyPanel', () => {
     const save = screen.getByRole('button', { name: 'Save' })
     expect(save).toHaveProperty('disabled', true)  // nothing changed yet
 
-    fireEvent.change(screen.getByLabelText('Company name'), { target: { value: 'Ledgerline' } })
+    fireEvent.change(screen.getByLabelText('Company name'), { target: { value: 'LedgerDesk' } })
     fireEvent.change(screen.getByLabelText('GSTIN'), { target: { value: '29aaaca1234a1z5' } })
     expect(screen.getByText('Karnataka')).toBeTruthy()  // picked from the GSTIN's state code
     expect(save).toHaveProperty('disabled', false)
 
     fireEvent.click(save)
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(stateWith(saved)))
-    expect(periodCloseApi.saveCompany).toHaveBeenCalledWith({ ...blank, name: 'Ledgerline', gstin: '29aaaca1234a1z5', state: 'Karnataka' })
+    expect(periodCloseApi.saveCompany).toHaveBeenCalledWith({ ...blank, name: 'LedgerDesk', gstin: '29aaaca1234a1z5', state: 'Karnataka' })
     expect(screen.getByLabelText<HTMLInputElement>('GSTIN').value).toBe('29AAACA1234A1Z5')
     expect(screen.getByText('Saved')).toBeTruthy()
     expect(save).toHaveProperty('disabled', true)  // nothing left to save
@@ -56,7 +56,7 @@ describe('CompanyPanel', () => {
   })
 
   it('is read-only without the edit right', () => {
-    render(<CompanyPanel company={{ ...blank, name: 'Ledgerline' }} canEdit={false} onSaved={vi.fn()} />)
+    render(<CompanyPanel company={{ ...blank, name: 'LedgerDesk' }} canEdit={false} onSaved={vi.fn()} />)
     expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
     expect(screen.getByLabelText<HTMLInputElement>('Company name').disabled).toBe(true)
   })

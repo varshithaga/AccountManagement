@@ -19,7 +19,7 @@ const invoice = (over: Partial<BillingDoc> = {}): BillingDoc => ({
   ...over,
 })
 
-const company: Company = { name: 'Ledgerline', gstin: '29AAACA1234A1Z5', state: 'Karnataka', address: '', email: '', phone: '' }
+const company: Company = { name: 'LedgerDesk', gstin: '29AAACA1234A1Z5', state: 'Karnataka', address: '', email: '', phone: '' }
 
 describe('amountInWords', () => {
   it.each([
@@ -82,9 +82,9 @@ describe('totals', () => {
 describe('who issues the document', () => {
   it('the company issues an invoice; the supplier issues a bill', () => {
     const inv = parties(toPrintable('sales', invoice()), company)
-    expect([inv.from.name, inv.to.name]).toEqual(['Ledgerline', 'Acme'])
+    expect([inv.from.name, inv.to.name]).toEqual(['LedgerDesk', 'Acme'])
     const bill = parties(toPrintable('purchase', invoice({ bill_number: 'PC-1', supplier_name: 'Paper Co', party: undefined })), company)
-    expect([bill.from.name, bill.to.name]).toEqual(['Paper Co', 'Ledgerline'])
+    expect([bill.from.name, bill.to.name]).toEqual(['Paper Co', 'LedgerDesk'])
   })
 
   it('names the file after the document', () => {

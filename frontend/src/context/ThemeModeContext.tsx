@@ -18,13 +18,14 @@ export const useThemeMode = () => useContext(ThemeModeContext)
 
 export function ThemeModeProvider({ children }: { children: React.ReactNode }) {
   const [mode, setMode] = useState<ThemeMode>(() => {
-    const saved = localStorage.getItem('ledgerline_theme_mode')
+    // ledgerline_theme_mode: where the choice was kept before the app was named LedgerDesk
+    const saved = localStorage.getItem('ledgerdesk_theme_mode') ?? localStorage.getItem('ledgerline_theme_mode')
     if (saved === 'dark' || saved === 'light') return saved
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
   })
 
   useEffect(() => {
-    localStorage.setItem('ledgerline_theme_mode', mode)
+    localStorage.setItem('ledgerdesk_theme_mode', mode)
     document.documentElement.setAttribute('data-theme', mode)
     if (mode === 'dark') {
       document.body.classList.add('dark-mode')
