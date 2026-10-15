@@ -25,6 +25,7 @@ from sqlalchemy import (
     false,
     func,
 )
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 Money = Numeric(14, 2)
@@ -112,6 +113,23 @@ class DocumentStatus(str, enum.Enum):
     PARTIALLY_PAID = "PARTIALLY_PAID"
     PAID = "PAID"
     CANCELLED = "CANCELLED"
+
+
+class Frequency(str, enum.Enum):
+    """How often a recurring invoice is raised."""
+    MONTHLY = "MONTHLY"
+    QUARTERLY = "QUARTERLY"
+    HALF_YEARLY = "HALF_YEARLY"
+    YEARLY = "YEARLY"
+
+
+class StockMovementKind(str, enum.Enum):
+    OPENING = "OPENING"                  # stock on hand when tracking started
+    PURCHASE = "PURCHASE"                # posted purchase bill (+)
+    SALE = "SALE"                        # posted sales invoice (-)
+    SALES_RETURN = "SALES_RETURN"        # credit note on an invoice (+)
+    PURCHASE_RETURN = "PURCHASE_RETURN"  # debit note on a bill (-)
+    ADJUSTMENT = "ADJUSTMENT"            # stock count, damage, samples... (+ or -)
 
 
 class NoteKind(str, enum.Enum):
@@ -521,6 +539,26 @@ class TaxRate(Base):
     input_tax_account: Mapped[Optional[SubCategory]] = relationship(foreign_keys=[input_tax_account_id])
 
 
+class TdsSection(Base):
+    """
+    A TDS (tax deducted at source) section, e.g. 194C contractors 1% / 2%, 194J professional fees 10%.
+    A purchase bill with a section keeps back rate% of its taxable value from the supplier and owes
+    it to the government instead (credited to the section's account, usually "TDS Payable").
+    """
+    __tablename__ = "tds_sections"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(20))                         # e.g. "194C"
+    name: Mapped[str] = mapped_column(String(150), unique=True)           # e.g. "194C - Contractor (company)"
+    rate: Mapped[Decimal] = mapped_column(Numeric(5, 2))                  # percent of the taxable value
+    # Informational: the yearly / single-payment limit below which no TDS is due
+    threshold: Mapped[Optional[Decimal]] = mapped_column(Money)
+    account_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sub_categories.id", ondelete="SET NULL"))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    account: Mapped[Optional[SubCategory]] = relationship()
+
+
 class Product(Base):
     """A product or service that can be put on sales invoices and purchase bills."""
     __tablename__ = "products"
@@ -539,6 +577,9 @@ class Product(Base):
     income_account_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sub_categories.id", ondelete="SET NULL"))
     expense_account_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sub_categories.id", ondelete="SET NULL"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Stock: posted invoices take it out, bills put it in (see StockMovement). Goods only.
+    track_inventory: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    reorder_level: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 3))
 
     tax_rate: Mapped[Optional[TaxRate]] = relationship()
     income_account: Mapped[Optional[SubCategory]] = relationship(foreign_keys=[income_account_id])
@@ -600,10 +641,13 @@ class Supplier(Base):
     opening_balance_date: Mapped[Optional[date]] = mapped_column(IsoDate)
     # Accounts Payable control account; falls back to the default one when empty
     payable_account_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sub_categories.id", ondelete="SET NULL"))
+    # TDS section new bills from this supplier start with
+    tds_section_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tds_sections.id", ondelete="SET NULL"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     payable_account: Mapped[Optional[SubCategory]] = relationship()
+    tds_section: Mapped[Optional[TdsSection]] = relationship()
     bills: Mapped[list["PurchaseBill"]] = relationship(back_populates="supplier", passive_deletes="all")
     payments: Mapped[list["Payment"]] = relationship(back_populates="supplier", passive_deletes="all")
 
@@ -642,6 +686,13 @@ class SalesInvoice(Base):
     )
     created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Payment reminders sent (or marked sent) for this invoice
+    reminder_count: Mapped[int] = mapped_column(SmallInteger, default=0, server_default="0")
+    last_reminder_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # The recurring invoice that raised it, if any
+    recurring_invoice_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("recurring_invoices.id", ondelete="SET NULL"), index=True
+    )
 
     client: Mapped[Client] = relationship(back_populates="invoices")
     items: Mapped[list["SalesInvoiceItem"]] = relationship(
@@ -651,10 +702,16 @@ class SalesInvoice(Base):
     credit_notes: Mapped[list["CreditNote"]] = relationship(back_populates="sales_invoice", passive_deletes="all")
     journal_entry: Mapped[Optional[JournalEntry]] = relationship()
     created_by: Mapped[Optional[User]] = relationship()
+    recurring_invoice: Mapped[Optional["RecurringInvoice"]] = relationship(foreign_keys="SalesInvoice.recurring_invoice_id")
 
-    @property
+    @hybrid_property
     def balance_due(self) -> Decimal:
         return self.total - self.amount_paid - (self.amount_credited or Decimal("0"))
+
+    @balance_due.inplace.expression
+    @classmethod
+    def _balance_due_sql(cls):
+        return cls.total - cls.amount_paid - cls.amount_credited
 
 
 class SalesInvoiceItem(Base):
@@ -696,8 +753,8 @@ class PurchaseBill(Base):
     __table_args__ = (
         # Bill numbers are the supplier's own, so they're only unique per supplier
         UniqueConstraint("supplier_id", "bill_number", name="unique_bill_number_per_supplier"),
-        CheckConstraint("amount_paid >= 0 AND amount_credited >= 0 AND amount_paid + amount_credited <= total",
-                        name="bill_amount_paid_range"),
+        CheckConstraint("amount_paid >= 0 AND amount_credited >= 0 AND tds_amount >= 0 "
+                        "AND amount_paid + amount_credited + tds_amount <= total", name="bill_amount_paid_range"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -717,6 +774,10 @@ class PurchaseBill(Base):
     place_of_supply: Mapped[str] = mapped_column(String(100), default="", server_default="")
     is_interstate: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     notes: Mapped[str] = mapped_column(Text, default="")
+    # TDS kept back from the supplier: tds_rate% of the subtotal (taxable value), owed to the government
+    tds_section_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tds_sections.id", ondelete="RESTRICT"))
+    tds_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"), server_default="0")
+    tds_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default="0")
     file_path: Mapped[Optional[str]] = mapped_column(String(500))  # scanned copy of the bill
     journal_entry_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("journal_entries.id", ondelete="SET NULL"), unique=True
@@ -732,10 +793,17 @@ class PurchaseBill(Base):
     credit_notes: Mapped[list["CreditNote"]] = relationship(back_populates="purchase_bill", passive_deletes="all")
     journal_entry: Mapped[Optional[JournalEntry]] = relationship()
     created_by: Mapped[Optional[User]] = relationship()
+    tds_section: Mapped[Optional[TdsSection]] = relationship()
 
-    @property
+    @hybrid_property
     def balance_due(self) -> Decimal:
-        return self.total - self.amount_paid - (self.amount_credited or Decimal("0"))
+        """What is still to be paid to the supplier: the total less payments, debit notes and TDS kept back."""
+        return self.total - self.amount_paid - (self.amount_credited or Decimal("0")) - (self.tds_amount or Decimal("0"))
+
+    @balance_due.inplace.expression
+    @classmethod
+    def _balance_due_sql(cls):
+        return cls.total - cls.amount_paid - cls.amount_credited - cls.tds_amount
 
 
 class PurchaseBillItem(Base):
@@ -1014,3 +1082,102 @@ class AuditLog(Base):
     changes: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
 
     user: Mapped[Optional[User]] = relationship()
+
+
+# ---------------------------------------------------------------------------
+# Document numbering
+# ---------------------------------------------------------------------------
+
+class NumberSequence(Base):
+    """The last number handed out per prefix (INV, RCPT, PAY, CN, DN, JV). The row is locked while a
+    number is taken, so two documents saved at the same moment never get the same number."""
+    __tablename__ = "number_sequences"
+
+    prefix: Mapped[str] = mapped_column(String(20), primary_key=True)
+    last_value: Mapped[int] = mapped_column(Integer, default=0)
+
+
+# ---------------------------------------------------------------------------
+# Recurring invoices
+# ---------------------------------------------------------------------------
+
+class RecurringInvoice(Base):
+    """
+    A template that raises a sales invoice every month / quarter / half-year / year on the same
+    day, from next_date until end_date (if any). The invoices are created as drafts - or posted
+    straight away with auto_post - by the background check, the "Create due invoices" button or
+    `python cli.py run-recurring`.
+    """
+    __tablename__ = "recurring_invoices"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))                       # e.g. "Office rent - Acme"
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id", ondelete="RESTRICT"), index=True)
+    frequency: Mapped[Frequency] = mapped_column(str_enum(Frequency), default=Frequency.MONTHLY)
+    start_date: Mapped[date] = mapped_column(IsoDate)
+    next_date: Mapped[date] = mapped_column(IsoDate, index=True)         # the next invoice's date
+    end_date: Mapped[Optional[date]] = mapped_column(IsoDate)
+    # Line items in the shape of the invoice API's "items" (product_id, description, quantity, ...)
+    items: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    auto_post: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    invoices_created: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str] = mapped_column(Text, default="")             # why the last run failed, if it did
+    created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    client: Mapped[Client] = relationship()
+    created_by: Mapped[Optional[User]] = relationship()
+
+
+# ---------------------------------------------------------------------------
+# Inventory
+# ---------------------------------------------------------------------------
+
+class StockMovement(Base):
+    """
+    One change in the stock of a tracked product: + for stock coming in, - for stock going out.
+    Posting an invoice / bill / note creates its movements; cancelling it removes them.
+    Stock on hand = the sum of a product's movements.
+    """
+    __tablename__ = "stock_movements"
+    __table_args__ = (CheckConstraint("quantity <> 0", name="stock_movement_nonzero"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), index=True)
+    date: Mapped[date] = mapped_column(IsoDate, index=True)
+    kind: Mapped[StockMovementKind] = mapped_column(str_enum(StockMovementKind))
+    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 3))
+    # Cost per unit for stock coming in (purchases, opening, adjustments) - used for the average cost
+    unit_cost: Mapped[Optional[Decimal]] = mapped_column(Money)
+    sales_invoice_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sales_invoices.id", ondelete="CASCADE"), index=True)
+    purchase_bill_id: Mapped[Optional[int]] = mapped_column(ForeignKey("purchase_bills.id", ondelete="CASCADE"), index=True)
+    credit_note_id: Mapped[Optional[int]] = mapped_column(ForeignKey("credit_notes.id", ondelete="CASCADE"), index=True)
+    note: Mapped[str] = mapped_column(String(500), default="")
+    created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    product: Mapped[Product] = relationship()
+    created_by: Mapped[Optional[User]] = relationship()
+
+
+# ---------------------------------------------------------------------------
+# Companies
+# ---------------------------------------------------------------------------
+
+class Company(Base):
+    """
+    The companies of this installation - each one's books live in a database of its own, so they are
+    completely separate (users, accounts, invoices, everything). Kept only in the main database
+    (DATABASE_URL), which is itself the company with key "default". Added with `python cli.py
+    create-company`.
+    """
+    __tablename__ = "companies"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(40), unique=True)       # e.g. "acme" - sent as the X-Company header
+    name: Mapped[str] = mapped_column(String(200))
+    database_url: Mapped[str] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

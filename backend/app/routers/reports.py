@@ -15,6 +15,7 @@ from ..deps import Access
 from ..errors import APIError, bad_request, forbidden
 from ..models import JournalEntryLine, User
 from ..services.gst import gst_summary
+from ..services.tds import tds_summary
 from ..services.invoicing import aging_report
 from ..services.reports import (
     AccountNotFound, build_account_ledger, build_balance_sheet, build_cash_flow, build_profit_and_loss,
@@ -241,3 +242,28 @@ def gst_summary_report(request: Request, db: Session = Depends(get_db), format: 
                  for d in report["documents"]]
         return _csv(f"gst_summary_{period}.csv", rows)
     return report
+
+
+@router.get("/tds-summary/", dependencies=[Depends(Access("tds_summary"))])
+def tds_summary_report(request: Request, db: Session = Depends(get_db), format: Optional[str] = None):
+    """TDS deducted on posted bills in the period, by section and by supplier (with PAN), and what has been
+    paid to the government (debits to the TDS accounts). ?format=csv exports."""
+    period, date_from, date_to = _period(db, request)
+    report = tds_summary(db, date_from, date_to)
+    report["period"] = period
+    if format == "csv":
+        rows = [["TDS Summary", date_from or "", date_to or ""], [],
+                ["Section", "Name", "Rate %", "Bills", "Taxable value", "TDS"]]
+        rows += [[s["code"], s["name"], s["rate"], s["bills"], s["taxable"], s["tds"]] for s in report["by_section"]]
+        rows += [["TOTAL", "", "", "", report["total_taxable"], report["total_deducted"]], [],
+                 ["Paid to the government in the period", "", "", "", "", report["books"]["paid"]],
+                 ["Outstanding at the end of the period", "", "", "", "", report["outstanding"]], [],
+                 ["Supplier", "PAN", "Section", "Bills", "Taxable value", "TDS"]]
+        rows += [[s["supplier_name"], s["pan"], s["section_code"], s["bills"], s["taxable"], s["tds"]]
+                 for s in report["by_supplier"]]
+        rows += [[], ["Bill", "Date", "Supplier", "PAN", "Section", "Rate %", "Taxable value", "TDS"]]
+        rows += [[b["bill_number"], b["bill_date"], b["supplier_name"], b["pan"], b["section_code"], b["rate"],
+                  b["taxable"], b["tds"]] for b in report["bills"]]
+        return _csv(f"tds_summary_{period}.csv", rows)
+    return report
+

@@ -31,6 +31,8 @@ PAGES = [
     ("sales_invoices", "Sales Invoices"),
     ("purchase_bills", "Purchase Bills"),
     ("payments", "Payments & Receipts"),
+    ("recurring_invoices", "Recurring Invoices"),
+    ("inventory", "Inventory"),
     ("bank_reconciliation", "Bank Reconciliation"),
     ("period_close", "Period Close"),
     ("profit_and_loss", "Profit & Loss"),
@@ -41,6 +43,7 @@ PAGES = [
     ("reports_comparison", "Period Comparison"),
     ("receivables_payables", "Receivables & Payables"),
     ("gst_summary", "GST Summary"),
+    ("tds_summary", "TDS Summary"),
     ("user_management", "User Management"),
     ("audit_log", "Audit Log"),
 ]
@@ -64,6 +67,8 @@ PAGE_ACTIONS = {
     "sales_invoices": ACTIONS,  # edit also covers posting and cancelling
     "purchase_bills": ACTIONS,
     "payments": ACTIONS,
+    "recurring_invoices": ACTIONS,
+    "inventory": (CREATE, DELETE),  # stock adjustments
     "bank_reconciliation": (EDIT,),  # matching and sign-off change existing items
     "period_close": (EDIT,),  # closing / reopening the books and the financial-year setting
     "user_management": ACTIONS,
@@ -83,12 +88,13 @@ DEFAULT_ROLES = [
      False,
      ["dashboard", "workflow", "menu_guide", "bank_statements", "statement_continuity", "transactions",
       "journal_entries", "clients", "suppliers", "products", "sales_invoices", "purchase_bills", "payments",
-      "bank_reconciliation", "receivables_payables"],
+      "recurring_invoices", "inventory", "bank_reconciliation", "receivables_payables"],
      {k: list(PAGE_ACTIONS[k]) for k in ("bank_statements", "transactions", "journal_entries", "clients", "suppliers",
-                                         "sales_invoices", "purchase_bills", "payments", "bank_reconciliation")}),
+                                         "sales_invoices", "purchase_bills", "payments", "recurring_invoices",
+                                         "inventory", "bank_reconciliation")}),
     ("Viewer", "Dashboard and financial reports only.", False,
      ["dashboard", "menu_guide", "profit_and_loss", "balance_sheet", "cash_flow", "trial_balance", "account_ledger",
-      "reports_comparison", "receivables_payables", "gst_summary"], {}),
+      "reports_comparison", "receivables_payables", "gst_summary", "tds_summary"], {}),
 ]
 
 

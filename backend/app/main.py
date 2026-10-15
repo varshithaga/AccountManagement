@@ -9,8 +9,8 @@ from .config import get_settings
 from .database import SessionLocal
 from .errors import register_error_handlers
 from .routers import (
-    audit, auth, billing, dashboard, journal, masters, parties, period_close, reconciliation, reports, statements,
-    transactions, users,
+    audit, auth, billing, communication, dashboard, inventory, journal, masters, parties, period_close,
+    reconciliation, recurring, reports, statements, transactions, users,
 )
 from .services import audit as _audit_tracking  # noqa: F401 - registers the audit log's flush listener
 from .services.seed import ensure_default_roles
@@ -39,7 +39,7 @@ app.add_middleware(
 register_error_handlers(app)
 
 for module in (auth, users, masters, statements, transactions, journal, parties, billing, reconciliation,
-               reports, period_close, dashboard, audit):
+               reports, period_close, dashboard, audit, inventory, recurring, communication):
     app.include_router(module.router)
 
 settings.media_root.mkdir(parents=True, exist_ok=True)

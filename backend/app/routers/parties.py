@@ -2,6 +2,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Response
+from pydantic import ValidationError
 from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session, joinedload
 
@@ -10,10 +11,10 @@ from ..database import get_db
 from ..deps import Access
 from ..errors import APIError, bad_request, field_error
 from ..models import (
-    Client, ItemType, Payment, Product, PurchaseBill, PurchaseBillItem, SalesInvoice, SalesInvoiceItem, SubCategory,
-    Supplier, TaxRate,
+    Client, ItemType, Payment, Product, PurchaseBill, PurchaseBillItem, SalesInvoice, SalesInvoiceItem, StockMovement,
+    SubCategory, Supplier, TaxRate, TdsSection,
 )
-from ..schemas import ClientIn, ProductIn, SupplierIn, TaxRateIn
+from ..schemas import BulkImportIn, ClientIn, ProductIn, SupplierIn, TaxRateIn, TdsSectionIn
 from ..services.invoicing import InvoicingError, party_statement, remove_opening_balance, sync_opening_balance
 from ..utils import apply_ordering, apply_search, get_or_404, is_true, paginate, parse_date
 
@@ -57,8 +58,12 @@ def _party_routes(path: str):
         if account_field in data:
             _check_account(db, account_field, data[account_field])
             data[f"{account_field}_id"] = data.pop(account_field)
+        if "tds_section" in data:
+            if data["tds_section"] is not None and not db.get(TdsSection, data["tds_section"]):
+                raise field_error("tds_section", f'Invalid pk "{data["tds_section"]}" - object does not exist.')
+            data["tds_section_id"] = data.pop("tds_section")
         # Text columns are NOT NULL - an explicit null means "clear it".
-        nullable = {"code", "gstin", f"{account_field}_id", "opening_balance", "opening_balance_date"}
+        nullable = {"code", "gstin", f"{account_field}_id", "opening_balance", "opening_balance_date", "tds_section_id"}
         return {k: ("" if v is None and k not in nullable else v) for k, v in data.items()
                 if not (k == "opening_balance" and v is None)}
 
@@ -123,6 +128,32 @@ def _party_routes(path: str):
         db.delete(obj)
         db.commit()
         return Response(status_code=204)
+
+    @router.post(f"/{path}/bulk-import/", dependencies=[Depends(Access(page_key, action="create"))],
+                 name=f"bulk_import_{path}")
+    def bulk_import(body: BulkImportIn, db: Session = Depends(get_db)):
+        """{"rows": [{name, code, gstin, state, email, ..., opening_balance}], "dry_run": bool} - all or nothing:
+        nothing is saved unless every row is valid. Account names may be given instead of ids
+        ("receivable_account_name" / "payable_account_name"; "tds_section_name" for suppliers)."""
+        def build(row: dict, n: int):
+            row = dict(row)
+            for name_field, id_field in ((f"{account_field}_name", account_field), ("tds_section_name", "tds_section")):
+                name = str(row.pop(name_field, "") or "").strip()
+                if name and path == "clients" and id_field == "tds_section":
+                    continue
+                if name:
+                    target = SubCategory if id_field == account_field else TdsSection
+                    found = db.scalar(select(target.id).where(func.lower(target.name) == name.lower()))
+                    if not found:
+                        raise ValueError(f'{name_field.replace("_", " ")} "{name}" does not exist')
+                    row[id_field] = found
+            data = prepare(db, schema(**row).model_dump(exclude_unset=True))
+            obj = model(**data)
+            db.add(obj)
+            db.flush()
+            sync_opening_balance(db, obj)
+            return obj
+        return _bulk_import(db, body, build, unique=("name", "code", "gstin"))
 
     @router.get(f"/{path}/{{party_id:int}}/statement/", dependencies=[Depends(access)], name=f"statement_{path}")
     def statement(party_id: int, date_from: Optional[str] = None, date_to: Optional[str] = None,
@@ -229,6 +260,15 @@ def _prepare_product(db: Session, data: dict, obj: Optional[Product]) -> dict:
     for field in ("description", "hsn_sac_code"):
         if field in data and data[field] is None:
             data[field] = ""
+    item_type = data.get("item_type") or (obj.item_type if obj else ItemType.PRODUCT)
+    if data.get("track_inventory") and item_type != ItemType.PRODUCT:
+        raise field_error("track_inventory", "Only goods (products) can have stock - not services.")
+    if obj is not None and data.get("track_inventory") is False and obj.track_inventory and \
+            db.scalar(select(exists().where(StockMovement.product_id == obj.id))):
+        raise field_error("track_inventory", f'"{obj.name}" has stock movements - it can\'t stop being tracked. '
+                                             "Mark it inactive instead.")
+    if data.get("item_type") == ItemType.SERVICE and obj is not None and obj.track_inventory:
+        raise field_error("item_type", "A product with stock tracking can't become a service.")
     return data
 
 
@@ -279,5 +319,140 @@ def update_product(product_id: int, body: ProductIn, db: Session = Depends(get_d
 def delete_product(product_id: int, db: Session = Depends(get_db)):
     # Invoice / bill lines keep their own description and prices, so they just lose the product link.
     db.delete(get_or_404(db, Product, product_id))
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.post("/products/bulk-import/", dependencies=[Depends(Access("products", action="create"))])
+def bulk_import_products(body: BulkImportIn, db: Session = Depends(get_db)):
+    """{"rows": [{name, code, item_type, hsn_sac_code, unit, sale_price, purchase_price, tax_rate_name,
+    income_account_name, expense_account_name, track_inventory, reorder_level}], "dry_run": bool} - all or nothing."""
+    def build(row: dict, n: int):
+        row = dict(row)
+        for name_field, id_field, model in (("tax_rate_name", "tax_rate", TaxRate),
+                                            ("income_account_name", "income_account", SubCategory),
+                                            ("expense_account_name", "expense_account", SubCategory)):
+            name = str(row.pop(name_field, "") or "").strip()
+            if name:
+                found = db.scalar(select(model.id).where(func.lower(model.name) == name.lower()))
+                if not found:
+                    raise ValueError(f'{name_field.replace("_name", "").replace("_", " ")} "{name}" does not exist')
+                row[id_field] = found
+        if isinstance(row.get("item_type"), str):
+            row["item_type"] = {"goods": "PRODUCT", "product": "PRODUCT", "service": "SERVICE"}.get(
+                row["item_type"].strip().lower(), row["item_type"].strip().upper())
+        product = Product(**_prepare_product(db, ProductIn(**row).model_dump(exclude_unset=True), None))
+        db.add(product)
+        db.flush()
+        return product
+    return _bulk_import(db, body, build, unique=("name", "code"))
+
+
+def _bulk_import(db: Session, body: BulkImportIn, build, unique: tuple[str, ...]) -> dict:
+    """Builds every row (each in a savepoint), collecting a message per bad row. Commits only when
+    every row is good and it isn't a dry run."""
+    if not body.rows:
+        raise bad_request("The file has no rows.")
+    if len(body.rows) > 5000:
+        raise bad_request("Import at most 5,000 rows at a time.")
+    errors, seen = [], {f: {} for f in unique}
+    created = 0
+    for n, row in enumerate(body.rows, start=1):
+        clash = next((f'{f} "{row[f]}" is also on row {seen[f][str(row[f]).strip().lower()]}' for f in unique
+                      if row.get(f) and str(row[f]).strip().lower() in seen[f]), None)
+        for f in unique:
+            if row.get(f):
+                seen[f].setdefault(str(row[f]).strip().lower(), n)
+        if clash:
+            errors.append({"row": n, "message": clash})
+            continue
+        try:
+            with db.begin_nested():
+                build(row, n)
+            created += 1
+        except ValidationError as exc:
+            first = exc.errors()[0]
+            field = ".".join(str(x) for x in first["loc"]) or "row"
+            errors.append({"row": n, "message": f"{field.replace('_', ' ')}: {first['msg']}"})
+        except APIError as exc:
+            errors.append({"row": n, "message": _api_error_text(exc.payload)})
+        except (ValueError, InvoicingError) as exc:
+            errors.append({"row": n, "message": str(exc)})
+    if errors or body.dry_run:
+        db.rollback()
+        return {"created": 0, "valid_rows": created, "errors": errors, "dry_run": body.dry_run}
+    db.commit()
+    return {"created": created, "valid_rows": created, "errors": [], "dry_run": False}
+
+
+def _api_error_text(detail) -> str:
+    if isinstance(detail, dict):
+        for field, value in detail.items():
+            message = value[0] if isinstance(value, list) and value else value
+            return message if field in ("error", "detail") else f"{field.replace('_', ' ')}: {message}"
+    return str(detail)
+
+
+# ---------------------------------------------------------------------------
+# TDS sections
+# ---------------------------------------------------------------------------
+
+tds_access = Access("products", "purchase_bills", "suppliers", "tds_summary", write_pages=("products",))
+
+
+def _prepare_tds(db: Session, data: dict, obj: Optional[TdsSection]) -> dict:
+    if obj is None:
+        missing = {f: ["This field is required."] for f in ("code", "name", "rate") if data.get(f) in (None, "")}
+        if missing:
+            raise APIError(400, missing)
+    for field in ("code", "name"):
+        if field in data and data[field] is not None:
+            data[field] = data[field].strip()
+    _check_unique(db, TdsSection, obj, name=data.get("name"))
+    if "account" in data:
+        _check_account(db, "account", data["account"])
+        data["account_id"] = data.pop("account")
+    return data
+
+
+@router.get("/tds-sections/", dependencies=[Depends(tds_access)])
+def list_tds_sections(db: Session = Depends(get_db), is_active: Optional[str] = None, page: Optional[str] = None,
+                      limit: Optional[str] = None):
+    stmt = select(TdsSection).options(joinedload(TdsSection.account))
+    if is_active is not None:
+        stmt = stmt.where(TdsSection.is_active.is_(is_true(is_active)))
+    return paginate(db, stmt.order_by(TdsSection.code, TdsSection.rate), page, limit, ser.tds_section)
+
+
+@router.post("/tds-sections/", status_code=201, dependencies=[Depends(tds_access)])
+def create_tds_section(body: TdsSectionIn, db: Session = Depends(get_db)):
+    section = TdsSection(**_prepare_tds(db, body.model_dump(exclude_unset=True), None))
+    db.add(section)
+    db.commit()
+    return ser.tds_section(db.get(TdsSection, section.id))
+
+
+@router.put("/tds-sections/{section_id:int}/", dependencies=[Depends(tds_access)])
+@router.patch("/tds-sections/{section_id:int}/", dependencies=[Depends(tds_access)])
+def update_tds_section(section_id: int, body: TdsSectionIn, db: Session = Depends(get_db)):
+    section = get_or_404(db, TdsSection, section_id, "TdsSection")
+    data = _prepare_tds(db, body.model_dump(exclude_unset=True), section)
+    if "rate" in data and data["rate"] != section.rate and \
+            db.scalar(select(exists().where(PurchaseBill.tds_section_id == section.id))):
+        raise bad_request(f'"{section.name}" is used on bills, so its rate cannot change - add a new section '
+                          "and mark this one inactive.")
+    for field, value in data.items():
+        setattr(section, field, value)
+    db.commit()
+    db.refresh(section)
+    return ser.tds_section(section)
+
+
+@router.delete("/tds-sections/{section_id:int}/", status_code=204, dependencies=[Depends(tds_access)])
+def delete_tds_section(section_id: int, db: Session = Depends(get_db)):
+    section = get_or_404(db, TdsSection, section_id, "TdsSection")
+    if db.scalar(select(exists().where(PurchaseBill.tds_section_id == section.id))):
+        raise bad_request(f'"{section.name}" is used on bills - mark it inactive instead.')
+    db.delete(section)
     db.commit()
     return Response(status_code=204)

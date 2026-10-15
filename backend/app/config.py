@@ -26,12 +26,32 @@ class Settings(BaseSettings):
     # Login / register attempts allowed per client IP per minute
     auth_rate_limit_per_minute: int = 20
 
+    # Outgoing email (invoices, payment reminders). Leave SMTP_HOST empty to turn email off.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""                 # e.g. "Accounts <accounts@example.com>"; default: SMTP_USERNAME
+    smtp_security: str = "starttls"     # starttls (port 587), ssl (port 465) or none
+    smtp_timeout_seconds: int = 20
+
+    # How often the server raises recurring invoices that have fallen due (0 = only on demand /
+    # `python cli.py run-recurring`).
+    recurring_check_minutes: int = 60
+
+    # Where `python cli.py backup` writes backups (default: backend/backups)
+    backup_dir: Path = BASE_DIR / "backups"
+
     @field_validator("secret_key")
     @classmethod
     def _not_placeholder(cls, value: str) -> str:
         if "change-me" in value:
             raise ValueError("SECRET_KEY is still the placeholder from .env.example - set a long random string")
         return value
+
+    @property
+    def email_configured(self) -> bool:
+        return bool(self.smtp_host and (self.smtp_from or self.smtp_username))
 
     @property
     def cors_origins(self) -> list[str]:

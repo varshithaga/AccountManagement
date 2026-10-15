@@ -161,7 +161,7 @@ def attention(request: Request, db: Session = Depends(get_db)):
     overdue = {}
     for key, model, date_col in (("overdue_invoices", SalesInvoice, SalesInvoice.due_date),
                                  ("overdue_bills", PurchaseBill, PurchaseBill.due_date)):
-        n, amount = db.execute(select(func.count(model.id), func.coalesce(func.sum(model.total - model.amount_paid - model.amount_credited), 0))
+        n, amount = db.execute(select(func.count(model.id), func.coalesce(func.sum(model.balance_due), 0))
                                .where(model.status.in_([DocumentStatus.POSTED, DocumentStatus.PARTIALLY_PAID]),
                                       date_col < today())).one()
         overdue[key] = {"count": n, "amount": Decimal(amount)}
@@ -395,4 +395,42 @@ def _sales_status(db: Session, count) -> dict:
         "payments": count(Payment),
         # money received / paid that isn't applied to any invoice or bill yet
         "unallocated_payments": count(Payment, Payment.amount > allocated),
+    }
+
+
+@router.get("/dashboard/sales-overview/",
+            dependencies=[Depends(Access("dashboard", "sales_invoices", "purchase_bills", "receivables_payables"))])
+def sales_overview(db: Session = Depends(get_db)):
+    """This month's sales, purchases and GST payable, what falls due in the next 7 days, what is overdue,
+    and recurring invoices waiting to be raised."""
+    from ..services.gst import gst_summary
+    from ..services.recurring import due_count
+
+    day = today()
+    start = day.replace(day=1)
+    end = day.replace(day=calendar.monthrange(day.year, day.month)[1])
+    week = day + timedelta(days=7)
+    posted = [DocumentStatus.POSTED, DocumentStatus.PARTIALLY_PAID, DocumentStatus.PAID]
+    gst = gst_summary(db, start.isoformat(), end.isoformat())
+
+    def sums(model, *where):
+        n, amount = db.execute(select(func.count(model.id), func.coalesce(func.sum(model.balance_due), 0))
+                               .where(model.status.in_([DocumentStatus.POSTED, DocumentStatus.PARTIALLY_PAID]),
+                                      *where)).one()
+        return {"count": n, "amount": Decimal(amount)}
+
+    month_total = lambda model, date_col: Decimal(db.scalar(
+        select(func.coalesce(func.sum(model.subtotal), 0)).where(model.status.in_(posted), date_col >= start,
+                                                                 date_col <= end)))
+    return {
+        "month": {"start": start.isoformat(), "end": end.isoformat()},
+        # taxable value (before GST) of the month's posted invoices and bills
+        "sales": month_total(SalesInvoice, SalesInvoice.invoice_date),
+        "purchases": month_total(PurchaseBill, PurchaseBill.bill_date),
+        "gst_payable": gst["net_payable"]["total"],
+        "receivable_next_7_days": sums(SalesInvoice, SalesInvoice.due_date >= day, SalesInvoice.due_date <= week),
+        "payable_next_7_days": sums(PurchaseBill, PurchaseBill.due_date >= day, PurchaseBill.due_date <= week),
+        "receivable_overdue": sums(SalesInvoice, SalesInvoice.due_date < day),
+        "payable_overdue": sums(PurchaseBill, PurchaseBill.due_date < day),
+        "recurring_due": due_count(db, day),
     }

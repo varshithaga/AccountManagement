@@ -6,7 +6,8 @@
     Purchase bill (posted)   Dr each line's expense / asset account              line amounts
                              Dr the tax rate's input GST account                 tax (added to the line's
                                                                                  account when there is none)
-                             Cr Accounts Payable (supplier's, or the default)    total
+                             Cr Accounts Payable (supplier's, or the default)    total - TDS
+                             Cr the TDS section's account ("TDS Payable")        TDS kept back
     Receipt from a client    Dr bank account's GL account (or Cash)             amount
                              Cr the client's receivable account                  amount
     Payment to a supplier    Dr the supplier's payable account                   amount
@@ -29,16 +30,17 @@ from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import exists, func, insert, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..models import (
     BankAccount, Client, CreditNote, CreditNoteItem, DocumentStatus, NoteKind, JournalEntry, JournalEntryLine, Payment, PaymentAllocation,
-    PaymentDirection, PaymentMethod, Product, PurchaseBill, PurchaseBillItem, SalesInvoice, SalesInvoiceItem,
-    SubCategory, Supplier, TaxRate, User,
+    NumberSequence, PaymentDirection, PaymentMethod, Product, PurchaseBill, PurchaseBillItem, SalesInvoice,
+    SalesInvoiceItem, SubCategory, Supplier, TaxRate, TdsSection, User,
 )
 from ..utils import ZERO, q2, today as _today
-from . import period_close
+from . import inventory, period_close
 from . import reconciliation as recon
 from .settings import accounting_settings
 
@@ -95,15 +97,40 @@ def _account(db: Session, account_id, label: str) -> SubCategory:
 # Numbering
 # ---------------------------------------------------------------------------
 
-def next_number(db: Session, column, prefix: str, width: int = 5) -> str:
-    """The next PREFIX-00001 style number after the highest one already used."""
+def _highest_used(db: Session, column, prefix: str) -> int:
+    """The highest PREFIX-<n> number already on a document (numbers can also be typed in by hand)."""
     highest = 0
     pattern = re.compile(rf'^{re.escape(prefix)}-(\d+)$')
     for value in db.scalars(select(column).where(column.like(f'{prefix}-%'))):
         m = pattern.match(value or '')
         if m:
             highest = max(highest, int(m.group(1)))
-    return f'{prefix}-{highest + 1:0{width}d}'
+    return highest
+
+
+def peek_number(db: Session, column, prefix: str, width: int = 5) -> str:
+    """The number the next document would get - to show in a form. Nothing is reserved."""
+    seq = db.get(NumberSequence, prefix)
+    return f'{prefix}-{max(_highest_used(db, column, prefix), seq.last_value if seq else 0) + 1:0{width}d}'
+
+
+def next_number(db: Session, column, prefix: str, width: int = 5) -> str:
+    """Takes the next PREFIX-00001 style number. The prefix's counter row stays locked until the
+    transaction ends, so documents saved at the same moment queue up and never share a number;
+    a number typed in by hand further ahead is skipped past. A rolled-back save gives its number back."""
+    # Plain SQL only: an ORM flush here would also save the half-built document that asked for the number.
+    lock = select(NumberSequence.last_value).where(NumberSequence.prefix == prefix).with_for_update()
+    last = db.execute(lock).scalar()
+    if last is None:
+        try:
+            with db.connection().begin_nested():
+                db.execute(insert(NumberSequence).values(prefix=prefix, last_value=0))
+        except IntegrityError:
+            pass  # another request created the counter at the same moment - use theirs
+        last = db.execute(lock).scalar()
+    value = max(last, _highest_used(db, column, prefix)) + 1
+    db.execute(update(NumberSequence).where(NumberSequence.prefix == prefix).values(last_value=value))
+    return f'{prefix}-{value:0{width}d}'
 
 
 # ---------------------------------------------------------------------------
@@ -369,6 +396,7 @@ def post_sales_invoice(db: Session, invoice: SalesInvoice) -> SalesInvoice:
     invoice.journal_entry_id = entry.id
     invoice.status = DocumentStatus.POSTED
     refresh_status(invoice)
+    inventory.record_document(db, invoice)
     db.flush()
     return invoice
 
@@ -385,6 +413,7 @@ def cancel_document(db: Session, doc, confirm_unmatch: bool = False):
     _remove_entry(db, doc.journal_entry_id, confirm_unmatch)
     doc.journal_entry_id = None
     doc.status = DocumentStatus.CANCELLED
+    inventory.remove_document(db, doc)
     db.flush()
     return doc
 
@@ -431,8 +460,33 @@ def save_purchase_bill(db: Session, data: dict, user: Optional[User], bill: Opti
         bill.items = items
         bill.subtotal, bill.tax_amount, bill.total = subtotal, tax, subtotal + tax
     apply_gst(db, bill, supplier)
+    # TDS: an explicit tds_section_id (null = none) wins; otherwise a new bill, or a draft moved to another
+    # supplier, takes the supplier's default section.
+    if 'tds_section_id' in data:
+        bill.tds_section_id = data['tds_section_id']
+    elif bill.id is None or 'supplier_id' in data:
+        bill.tds_section_id = supplier.tds_section_id
+    apply_tds(db, bill)
     db.flush()
     return bill
+
+
+def apply_tds(db: Session, bill: PurchaseBill) -> None:
+    """TDS kept back on the bill: its section's rate on the taxable value (GST is not part of it)."""
+    section = db.get(TdsSection, bill.tds_section_id) if bill.tds_section_id else None
+    if bill.tds_section_id and section is None:
+        raise InvoicingError(f'TDS section {bill.tds_section_id} does not exist.')
+    bill.tds_rate = section.rate if section else ZERO
+    bill.tds_amount = q2((bill.subtotal or ZERO) * bill.tds_rate / Decimal(100))
+
+
+def _tds_account_id(db: Session, section: TdsSection) -> int:
+    if section.account_id:
+        return section.account_id
+    named = _named_account(db, 'TDS Payable')
+    if not named:
+        raise InvoicingError(f'TDS section "{section.name}" has no account - set one, or add a "TDS Payable" sub-category.')
+    return named.id
 
 
 def post_purchase_bill(db: Session, bill: PurchaseBill) -> PurchaseBill:
@@ -442,6 +496,7 @@ def post_purchase_bill(db: Session, bill: PurchaseBill) -> PurchaseBill:
         raise InvoicingError('A bill must total more than zero to be posted.')
     supplier = bill.supplier
     apply_gst(db, bill, supplier)
+    apply_tds(db, bill)
     lines = []
     for item in bill.items:
         tax_account = item.tax_rate.input_tax_account_id if item.tax_rate else None
@@ -451,12 +506,17 @@ def post_purchase_bill(db: Session, bill: PurchaseBill) -> PurchaseBill:
         else:
             # No input-credit account: the tax is part of the cost.
             lines.append((item.account_id, item.amount + item.tax_amount, ZERO, item.description))
-    lines.append((_payable_account_id(db, supplier), ZERO, bill.total, f'Bill {bill.bill_number}'))
+    lines.append((_payable_account_id(db, supplier), ZERO, bill.total - bill.tds_amount, f'Bill {bill.bill_number}'))
+    if bill.tds_amount:
+        section = db.get(TdsSection, bill.tds_section_id)
+        lines.append((_tds_account_id(db, section), ZERO, bill.tds_amount,
+                      f'TDS {section.code} @ {section.rate.normalize()}% on {bill.bill_number} - {supplier.name}'))
     entry = _post_entry(db, f'PB-{supplier.id}-{bill.bill_number}', bill.bill_date,
                         f'Purchase bill {bill.bill_number} - {supplier.name}', ORIGIN_PURCHASE_BILL, lines)
     bill.journal_entry_id = entry.id
     bill.status = DocumentStatus.POSTED
     refresh_status(bill)
+    inventory.record_document(db, bill)
     db.flush()
     return bill
 
@@ -473,7 +533,7 @@ def refresh_status(doc) -> None:
     doc.amount_credited = sum((n.total for n in doc.credit_notes if n.status == DocumentStatus.POSTED), ZERO)
     if doc.status in (DocumentStatus.DRAFT, DocumentStatus.CANCELLED):
         return
-    settled = paid + doc.amount_credited
+    settled = paid + doc.amount_credited + (getattr(doc, 'tds_amount', None) or ZERO)
     if settled <= 0:
         doc.status = DocumentStatus.POSTED
     elif settled >= doc.total:
@@ -678,6 +738,10 @@ def party_statement(db: Session, party, date_from: Optional[date] = None, date_t
             'due_date': d.due_date.isoformat(),
             'increase': d.total, 'decrease': ZERO,
         })
+    for d in docs:
+        if not is_client and d.tds_amount:
+            events.append({'date': d.bill_date, 'type': 'TDS', 'id': d.id, 'number': d.bill_number, 'due_date': None,
+                           'increase': ZERO, 'decrease': d.tds_amount})
     for p in payments:
         events.append({'date': p.payment_date, 'type': p.direction.value, 'id': p.id, 'number': p.payment_number,
                        'due_date': None, 'increase': ZERO, 'decrease': p.amount})
@@ -834,6 +898,7 @@ def create_credit_note(db: Session, data: dict, user: Optional[User]) -> CreditN
     entry = _post_entry(db, number, note_date, narration, ORIGIN_CREDIT_NOTE, lines)
     note.journal_entry_id = entry.id
     db.flush()
+    inventory.record_document(db, note)
     db.refresh(doc, ['credit_notes'])
     refresh_status(doc)
     db.flush()
@@ -847,6 +912,7 @@ def cancel_credit_note(db: Session, note: CreditNote, confirm_unmatch: bool = Fa
     _remove_entry(db, note.journal_entry_id, confirm_unmatch)
     note.journal_entry_id = None
     note.status = DocumentStatus.CANCELLED
+    inventory.remove_document(db, note)
     db.flush()
     doc = note.sales_invoice or note.purchase_bill
     db.refresh(doc, ['credit_notes'])

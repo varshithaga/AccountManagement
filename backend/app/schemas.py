@@ -255,8 +255,28 @@ class ProductIn(Body):
     income_account: Optional[int] = None
     expense_account: Optional[int] = None
     is_active: Optional[bool] = None
+    track_inventory: Optional[bool] = None
+    reorder_level: Optional[Decimal] = Field(default=None, ge=0, max_digits=12, decimal_places=3)
 
     _code = field_validator("code")(_strip_code)
+
+
+class TdsSectionIn(Body):
+    code: Optional[str] = Field(default=None, max_length=20)
+    name: Optional[str] = Field(default=None, max_length=150)
+    rate: Optional[Decimal] = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
+    threshold: Optional[Decimal] = Field(default=None, ge=0, max_digits=14, decimal_places=2)
+    account: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class StockAdjustmentIn(Body):
+    product: int
+    quantity: Decimal = Field(max_digits=12, decimal_places=3)
+    movement_date: Optional[date] = None
+    unit_cost: Optional[Decimal] = Field(default=None, ge=0, max_digits=14, decimal_places=2)
+    note: Optional[str] = Field(default=None, max_length=500)
+    opening: bool = False
 
 
 class PartyIn(Body):
@@ -294,6 +314,13 @@ class ClientIn(PartyIn):
 class SupplierIn(PartyIn):
     address: Optional[str] = None
     payable_account: Optional[int] = None
+    tds_section: Optional[int] = None
+
+
+class BulkImportIn(Body):
+    """Rows from a spreadsheet, as API field names. dry_run checks every row without saving anything."""
+    rows: list[dict[str, Any]]
+    dry_run: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -327,6 +354,7 @@ class PurchaseBillIn(Body):
     due_date: Optional[date] = None
     notes: Optional[str] = None
     items: Optional[list[ItemIn]] = None
+    tds_section_id: Optional[int] = None
     post: bool = False
 
 
@@ -375,3 +403,32 @@ class ConfirmIn(Body):
 
 DocumentStatusFilter = Optional[DocumentStatus]
 DirectionFilter = Optional[Literal["RECEIPT", "PAYMENT"]]
+
+
+# ---------------------------------------------------------------------------
+# Recurring invoices, reminders
+# ---------------------------------------------------------------------------
+
+class RecurringInvoiceIn(Body):
+    name: Optional[str] = Field(default=None, max_length=200)
+    client_id: Optional[int] = None
+    frequency: Optional[str] = None
+    start_date: Optional[date] = None
+    next_date: Optional[date] = None
+    end_date: Optional[date] = None
+    items: Optional[list[ItemIn]] = None
+    notes: Optional[str] = None
+    auto_post: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+
+class ReminderIn(Body):
+    """A payment reminder to one client about some of their overdue invoices."""
+    client_id: int
+    invoice_ids: list[int]
+    to: Optional[str] = Field(default=None, max_length=500)
+    cc: Optional[str] = Field(default=None, max_length=500)
+    subject: Optional[str] = Field(default=None, max_length=300)
+    message: Optional[str] = None
+    # False: the reminder was sent some other way (phone, WhatsApp) - only record it
+    send_email: bool = True

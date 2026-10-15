@@ -344,7 +344,25 @@ def product(p: Product) -> dict:
         'income_account': p.income_account_id, 'income_account_name': p.income_account.name if p.income_account else None,
         'expense_account': p.expense_account_id,
         'expense_account_name': p.expense_account.name if p.expense_account else None,
-        'is_active': p.is_active,
+        'is_active': p.is_active, 'track_inventory': p.track_inventory,
+        'reorder_level': str(p.reorder_level.normalize()) if p.reorder_level is not None else None,
+    }
+
+
+def tds_section(t) -> dict:
+    return {'id': t.id, 'code': t.code, 'name': t.name, 'rate': money(t.rate),
+            'threshold': money(t.threshold) if t.threshold is not None else None,
+            'account': t.account_id, 'account_name': t.account.name if t.account else None, 'is_active': t.is_active}
+
+
+def recurring_invoice(r) -> dict:
+    return {
+        'id': r.id, 'name': r.name, 'client': r.client_id, 'client_name': r.client.name,
+        'frequency': _v(r.frequency), 'start_date': r.start_date.isoformat(), 'next_date': r.next_date.isoformat(),
+        'end_date': r.end_date.isoformat() if r.end_date else None, 'items': r.items or [], 'notes': r.notes,
+        'auto_post': r.auto_post, 'is_active': r.is_active, 'invoices_created': r.invoices_created,
+        'last_error': r.last_error, 'created_by': r.created_by.username if r.created_by else None,
+        'created_at': iso(r.created_at),
     }
 
 
@@ -368,6 +386,7 @@ def client(c: Client, outstanding: Optional[Decimal] = None) -> dict:
 def supplier(s: Supplier, outstanding: Optional[Decimal] = None) -> dict:
     return {**_party(s), 'address': s.address, 'payable_account': s.payable_account_id,
             'payable_account_name': s.payable_account.name if s.payable_account else None,
+            'tds_section': s.tds_section_id, 'tds_section_name': s.tds_section.name if s.tds_section else None,
             'outstanding': money(outstanding) if outstanding is not None else None}
 
 
@@ -381,7 +400,7 @@ def party_outstanding(db: Session, model, ids: list[int]) -> dict:
     party_col = SalesInvoice.client_id if is_client else PurchaseBill.supplier_id
     pay_col = Payment.client_id if is_client else Payment.supplier_id
     result = {p.id: p.opening_balance or Decimal('0') for p in db.scalars(select(model).where(model.id.in_(ids)))}
-    for pid, due in db.execute(select(party_col, func.sum(doc.total - doc.amount_paid - doc.amount_credited))
+    for pid, due in db.execute(select(party_col, func.sum(doc.balance_due))
                                .where(party_col.in_(ids), doc.status.in_([DocumentStatus.POSTED,
                                                                           DocumentStatus.PARTIALLY_PAID]))
                                .group_by(party_col)):
@@ -466,6 +485,8 @@ def sales_invoice(inv: SalesInvoice, detail: bool = True) -> dict:
         'notes': inv.notes, 'journal_entry': inv.journal_entry_id,
         'journal_entry_number': inv.journal_entry.entry_number if inv.journal_entry else None,
         'created_by': inv.created_by.username if inv.created_by else None, 'created_at': iso(inv.created_at),
+        'reminder_count': inv.reminder_count or 0, 'last_reminder_at': iso(inv.last_reminder_at),
+        'recurring_invoice': inv.recurring_invoice_id,
     }
     if detail:
         data['items'] = [_item(i) for i in inv.items]
@@ -486,6 +507,8 @@ def purchase_bill(bill: PurchaseBill, detail: bool = True) -> dict:
         'total': money(bill.total), 'amount_paid': money(bill.amount_paid),
         'amount_credited': money(bill.amount_credited), 'balance_due': money(bill.balance_due),
         'status': _v(bill.status), 'notes': bill.notes, 'file': bill.file_path, 'journal_entry': bill.journal_entry_id,
+        'tds_section': bill.tds_section_id, 'tds_section_name': bill.tds_section.name if bill.tds_section else None,
+        'tds_rate': money(bill.tds_rate), 'tds_amount': money(bill.tds_amount),
         'journal_entry_number': bill.journal_entry.entry_number if bill.journal_entry else None,
         'created_by': bill.created_by.username if bill.created_by else None, 'created_at': iso(bill.created_at),
     }

@@ -46,12 +46,12 @@ def _status_summary(db: Session, model) -> dict:
     """Counts and amounts per status, plus what is overdue."""
     by_status = {s.value: {"count": 0, "total": 0, "balance_due": 0} for s in DocumentStatus}
     for status, n, total, due in db.execute(select(model.status, func.count(model.id), func.sum(model.total),
-                                                   func.sum(model.total - model.amount_paid - model.amount_credited))
+                                                   func.sum(model.balance_due))
                                             .group_by(model.status)):
         by_status[status.value] = {"count": n, "total": total or 0, "balance_due": due or 0}
-    n, due = db.execute(select(func.count(model.id), func.coalesce(func.sum(model.total - model.amount_paid - model.amount_credited), 0))
+    n, due = db.execute(select(func.count(model.id), func.coalesce(func.sum(model.balance_due), 0))
                         .where(model.status.in_(invoicing.OPEN_STATUSES), model.due_date < today())).one()
-    outstanding = db.scalar(select(func.coalesce(func.sum(model.total - model.amount_paid - model.amount_credited), 0))
+    outstanding = db.scalar(select(func.coalesce(func.sum(model.balance_due), 0))
                             .where(model.status.in_(invoicing.OPEN_STATUSES)))
     return {"by_status": by_status, "outstanding": outstanding, "overdue": {"count": n, "amount": due}}
 
@@ -109,7 +109,7 @@ def invoices_summary(db: Session = Depends(get_db)):
 
 @router.get("/sales-invoices/next-number/", dependencies=[Depends(invoice_access)])
 def next_invoice_number(db: Session = Depends(get_db)):
-    return {"invoice_number": invoicing.next_number(db, SalesInvoice.invoice_number, "INV")}
+    return {"invoice_number": invoicing.peek_number(db, SalesInvoice.invoice_number, "INV")}
 
 
 @router.post("/sales-invoices/", status_code=201)
