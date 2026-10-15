@@ -10,7 +10,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=BASE_DIR / ".env", extra="ignore")
 
-    database_url: str = f"sqlite:///{(BASE_DIR / 'accounting.db').as_posix()}"
+    # PostgreSQL database "account_management". Override with DATABASE_URL in .env.
+    database_url: str = "postgresql+psycopg://postgres:1234@localhost:5432/account_management"
     secret_key: str = "change-me-in-production"
     access_token_minutes: int = 30
     refresh_token_days: int = 30

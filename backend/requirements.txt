@@ -7,6 +7,7 @@ email-validator==2.3.0
 PyJWT==2.15.1
 bcrypt==5.0.0
 python-multipart==0.0.32
+alembic==1.20.0
 
 # Bank statement parsing (Excel / PDF / CSV)
 pandas==3.0.6
@@ -14,8 +15,8 @@ openpyxl==3.1.5
 pdfplumber==0.11.10
 python-dateutil==2.9.0.post0
 
-# PostgreSQL (optional - set DATABASE_URL=postgresql+psycopg://...)
-# psycopg[binary]
+# PostgreSQL driver
+psycopg[binary]==3.3.6
 
 # Tests
 pytest==9.1.1

@@ -34,8 +34,27 @@ def get_db() -> Iterator[Session]:
         db.close()
 
 
-def init_db() -> None:
-    """Creates any missing tables. (Switch to Alembic migrations once the schema settles.)"""
-    from . import models  # noqa: F401 - registers every table on Base.metadata
+def _alembic_config():
+    from pathlib import Path
 
-    models.Base.metadata.create_all(bind=engine)
+    from alembic.config import Config
+
+    backend_dir = Path(__file__).resolve().parent.parent
+    cfg = Config(str(backend_dir / "alembic.ini"))
+    cfg.set_main_option("script_location", str(backend_dir / "migrations"))
+    return cfg
+
+
+def migrate() -> None:
+    """Applies every pending Alembic migration (like Django's `migrate`)."""
+    from alembic import command
+
+    command.upgrade(_alembic_config(), "head")
+
+
+def make_migration(message: str) -> None:
+    """Writes a new migration from the difference between models.py and the database
+    (like Django's `makemigrations`). Review the generated file before applying it."""
+    from alembic import command
+
+    command.revision(_alembic_config(), message=message, autogenerate=True)

@@ -2,9 +2,11 @@ import os
 import tempfile
 from pathlib import Path
 
-# Point the app at a throwaway database and media folder before it is imported.
+# Point the app at a throwaway database and media folder before it is imported. Tests use a
+# temporary SQLite file unless TEST_DATABASE_URL names a (disposable!) database - every test drops
+# and recreates all its tables.
 _tmp = Path(tempfile.mkdtemp(prefix="accounting-tests-"))
-os.environ["DATABASE_URL"] = f"sqlite:///{(_tmp / 'test.db').as_posix()}"
+os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL") or f"sqlite:///{(_tmp / 'test.db').as_posix()}"
 os.environ["MEDIA_ROOT"] = str(_tmp / "media")
 os.environ["AUTH_RATE_LIMIT_PER_MINUTE"] = "1000"
 

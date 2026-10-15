@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
-from .database import SessionLocal, init_db
+from .database import SessionLocal
 from .errors import register_error_handlers
 from .routers import (
     auth, billing, dashboard, journal, masters, parties, period_close, reconciliation, reports, statements,
@@ -19,7 +19,7 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    init_db()
+    # The schema is managed by Alembic (python cli.py migrate) - the app never creates tables itself.
     with SessionLocal() as db:
         ensure_default_roles(db)
     yield

@@ -12,10 +12,26 @@ venv\Scripts\activate            # Windows  (source venv/bin/activate elsewhere)
 pip install -r requirements.txt
 copy .env.example .env           # then set SECRET_KEY (32+ characters)
 
-python cli.py init-db            # tables + default roles (Admin, Accountant, Bookkeeper, Viewer)
+python cli.py init-db            # apply migrations + default roles (Admin, Accountant, Bookkeeper, Viewer)
 python cli.py seed               # optional: starter Chart of Accounts, GST rates, BAI codes, sample banks
 uvicorn app.main:app --reload    # http://127.0.0.1:8000/docs
 ```
+
+The database is PostgreSQL `account_management` (`DATABASE_URL` in `.env`).
+
+## Migrations (Alembic)
+
+The app never creates or alters tables itself - Alembic does, from the files in `migrations/versions/`.
+
+```bash
+# 1. change app/models.py
+python cli.py makemigrations "add website to clients"   # writes migrations/versions/<date>-<id>_add_website_to_clients.py
+# 2. read the generated file - autogenerate can't see renames (it drops + adds) and needs
+#    server_default= on a new NOT NULL column when the table already has rows
+python cli.py migrate                                   # applies it
+```
+
+Plain Alembic works too: `alembic upgrade head`, `alembic downgrade -1`, `alembic history`, `alembic current`.
 
 The first account registered through `POST /api/auth/register/` becomes the administrator
 (or create one with `python cli.py create-admin <username>`). Later sign-ups have no page
