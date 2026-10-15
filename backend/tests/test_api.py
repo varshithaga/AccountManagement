@@ -150,12 +150,18 @@ def test_statement_upload_categorize_and_finalize(admin):
     pnl = admin.get("/api/reports/profit-and-loss/", params={"period": "all_time"}).json()
     assert pnl["summary"]["total_income"] == 1000 and pnl["summary"]["total_expenses"] == 350
     tb = admin.get("/api/reports/trial-balance/", params={"period": "all_time"}).json()
-    assert tb["total_debit"] == 350 and tb["total_credit"] == 1000
+    # Reports come from the books: finalizing posted one journal entry per transaction (Bank 650 Dr net,
+    # Rent 250 + Electricity 100 Dr, Service Revenue 1000 Cr) - so the trial balance balances.
+    assert tb["total_debit"] == tb["total_credit"] == 1000 and tb["is_balanced"]
+    assert fin["posting"]["posted"] == 3
+    posted = admin.get("/api/journal-entries/", params={"source": "BANK"}).json()
+    assert posted["count"] == 3 and all(e["reconcile_status"] == "RECONCILED" for e in posted["results"])
     assert admin.get("/api/reports/trial-balance/", params={"period": "all_time", "format": "csv"}).text.startswith("Account Type")
     cf = admin.get("/api/reports/cash-flow/", params={"period": "all_time"}).json()
-    assert cf["opening_cash"] == 10000 and cf["closing_cash"] == 10650
+    # The 10,000 already in the bank isn't in the books until an opening-balance entry is booked.
+    assert cf["opening_cash"] == 0 and cf["net_change"] == 650 and cf["closing_cash"] == 650
     ledger = admin.get("/api/reports/account-ledger/", params={"sub_category": sub_id(admin, "Rent"), "period": "all_time"}).json()
-    assert ledger["closing_balance"] == 250
+    assert ledger["closing_balance"] == 250 and ledger["rows"][0]["entry_number"].startswith("BT-")
     assert admin.get("/api/reports/balance-sheet/", params={"period": "all_time"}).status_code == 200
     assert admin.get("/api/reports/comparison/", params={"summary": 1, "a_period": "this_month"}).status_code == 200
 
@@ -326,3 +332,194 @@ def test_purchase_bill_and_supplier_payment(admin):
     r = admin.post("/api/payments/", json={"direction": "RECEIPT", "supplier_id": supplier["id"], "amount": 5,
                                            "method": "CASH"})
     assert r.status_code == 400
+
+
+def test_date_filtered_endpoints(admin):
+    """Every period / date_from / date_to filter - PostgreSQL refuses to compare a date column with
+    text, so these must reach the database as real dates (SQLite never complained)."""
+    bank = _bank(admin)
+    _upload(admin, bank["id"])
+    periods = ["this_month", "last_month", "this_quarter", "this_year", "this_fiscal_year", "last_fiscal_year"]
+    dated = {"date_from": d(0), "date_to": d(30)}
+    urls = [("/api/dashboard/overview/", {"period": p}) for p in periods]
+    urls += [(f"/api/reports/{r}/", {"period": "custom", **dated})
+             for r in ("profit-and-loss", "balance-sheet", "trial-balance", "cash-flow", "line-item-transactions")]
+    urls += [("/api/transactions/", {"period": "this_month"}), ("/api/transactions/", dated),
+             ("/api/transactions/summary/", dated), ("/api/journal-entries/", dated), ("/api/journal-entries/summary/", dated),
+             ("/api/sales-invoices/", dated), ("/api/purchase-bills/", dated), ("/api/payments/", dated),
+             ("/api/continuity/page/", {"period": "this_fiscal_year"}),
+             ("/api/reconciliation/bank-transactions/", {"account": bank["id"], **dated}),
+             ("/api/reconciliation/summary/", {"account": bank["id"], **dated})]
+    for url, params in urls:
+        r = admin.get(url, params=params)
+        assert r.status_code == 200, f"{url} {params}: {r.status_code} {r.text[:200]}"
+    assert admin.get("/api/transactions/", params=dated).json()["count"] == 3
+
+
+def test_manual_journal_entry(admin):
+    rent, cash, bank_gl = sub_id(admin, "Rent"), sub_id(admin, "Cash"), sub_id(admin, "Bank Accounts")
+    # Unbalanced, one-sided and single-line entries are refused, with every problem listed.
+    r = admin.post("/api/journal-entries/manual/", json={"date": d(0), "lines": [
+        {"sub_category_id": rent, "debit": "100"}, {"sub_category_id": cash, "credit": "90"}]})
+    assert r.status_code == 400 and "not balanced" in r.json()["error"][0]
+    r = admin.post("/api/journal-entries/manual/", json={"date": d(0), "lines": [
+        {"sub_category_id": rent, "debit": "100", "credit": "100"}, {"sub_category_id": None, "credit": "100"}]})
+    assert r.status_code == 400 and len(r.json()["error"]) == 2
+    assert admin.post("/api/journal-entries/manual/", json={"date": d(0), "lines": [
+        {"sub_category_id": rent, "debit": "5"}]}).status_code == 400
+
+    r = admin.post("/api/journal-entries/manual/", json={"date": d(0), "narration": "Office rent paid in cash", "lines": [
+        {"sub_category_id": rent, "debit": "1500.50", "description": "October rent"},
+        {"sub_category_id": cash, "credit": "1500.50"}]})
+    assert r.status_code == 201, r.text
+    entry = r.json()
+    assert entry["entry_number"] == "JV-00001" and entry["source"] == "MANUAL" and entry["origin"] == "MANUAL"
+    assert entry["total_debit"] == entry["total_credit"] == "1500.50" and entry["warnings"] == []
+
+    # Same date, accounts and amounts again: saved, with a warning.
+    again = admin.post("/api/journal-entries/manual/", json={"date": d(0), "lines": [
+        {"sub_category_id": rent, "debit": "1500.50"}, {"sub_category_id": cash, "credit": "1500.50"}]}).json()
+    assert again["entry_number"] == "JV-00002" and "JV-00001" in again["warnings"][0]
+    assert admin.post("/api/journal-entries/manual/", json={"entry_number": "JV-00001", "date": d(0), "lines": [
+        {"sub_category_id": rent, "debit": "1"}, {"sub_category_id": cash, "credit": "1"}]}).status_code == 400
+
+    # Edit: three lines, split credit.
+    r = admin.put(f"/api/journal-entries/{entry['id']}/", json={"entry_number": "JV-00001", "date": d(1), "narration": "Rent split",
+        "lines": [{"sub_category_id": rent, "debit": "2000"}, {"sub_category_id": cash, "credit": "500"},
+                  {"sub_category_id": bank_gl, "credit": "1500"}]})
+    assert r.status_code == 200, r.text
+    assert r.json()["date"] == d(1) and len(r.json()["lines"]) == 3 and r.json()["total_credit"] == "2000.00"
+    assert admin.get("/api/journal-entries/", params={"source": "MANUAL"}).json()["count"] == 2
+
+    # Imported entries can't be edited this way; manual ones can be deleted.
+    admin.post("/api/journal-entries/import/", json={"source": "API", "entries": [
+        {"entry_number": "IMP-1", "date": d(0), "lines": [{"sub_category_id": rent, "debit": 5}, {"sub_category_id": cash, "credit": 5}]}]})
+    imported = admin.get("/api/journal-entries/", params={"search": "IMP-1"}).json()["results"][0]
+    r = admin.put(f"/api/journal-entries/{imported['id']}/", json={"date": d(0), "lines": [
+        {"sub_category_id": rent, "debit": 6}, {"sub_category_id": cash, "credit": 6}]})
+    assert r.status_code == 400 and "Only manual entries" in r.json()["error"][0]
+    assert admin.delete(f"/api/journal-entries/{again['id']}/").status_code == 204
+
+    # Closed period: no new manual entry dated in it.
+    admin.post("/api/period-close/close/", json={"as_of": d(5)})
+    r = admin.post("/api/journal-entries/manual/", json={"date": d(2), "lines": [
+        {"sub_category_id": rent, "debit": 1}, {"sub_category_id": cash, "credit": 1}]})
+    assert r.status_code == 400 and "closed" in r.json()["error"][0]
+
+
+def test_reports_come_from_the_books(admin):
+    """Invoices, manual entries and final bank transactions all reach the P&L; reopening a bank
+    transaction takes it out again; a transaction already matched to a journal line isn't posted twice."""
+    bank = _bank(admin)
+    stmt = _upload(admin, bank["id"]).json()
+    pnl = lambda: admin.get("/api/reports/profit-and-loss/", params={"period": "all_time"}).json()
+    assert pnl()["summary"]["total_income"] == 0 and pnl()["uncategorized_count"] == 3  # not in the books yet
+
+    # A posted invoice is income straight away.
+    client_ = admin.post("/api/clients/", json={"name": "Acme"}).json()
+    admin.post("/api/sales-invoices/", json={"client_id": client_["id"], "invoice_date": d(3), "post": True,
+        "items": [{"description": "Work", "unit_price": "5000", "account_id": sub_id(admin, "Service Revenue")}]})
+    assert pnl()["summary"]["total_income"] == 5000
+
+    # A manual entry is too.
+    admin.post("/api/journal-entries/manual/", json={"date": d(4), "lines": [
+        {"sub_category_id": sub_id(admin, "Insurance"), "debit": "300"}, {"sub_category_id": sub_id(admin, "Cash"), "credit": "300"}]})
+    assert pnl()["summary"]["total_expenses"] == 300
+
+    # Bank rows: the deposit is matched to an imported entry first, so finalizing must not post it again.
+    txns = {t["description"]: t for t in admin.get("/api/transactions/", params={"statement": stmt["id"]}).json()["results"]}
+    deposit = next(t for k, t in txns.items() if "client" in k)
+    admin.post("/api/journal-entries/import/", json={"source": "API", "bank_account": bank["id"], "entries": [
+        {"entry_number": "IMP-1", "date": d(0), "lines": [{"sub_category_name": "Bank", "debit": "1000"},
+                                                          {"sub_category_name": "Consulting Revenue", "credit": "1000"}]}]})
+    line = admin.get("/api/reconciliation/book-lines/", params={"account": bank["id"]}).json()["results"][0]
+    assert admin.post("/api/reconciliation/match-pair/", json={"transaction": deposit["id"], "journal_line": line["id"]}).status_code == 201
+    for desc, account in (("client", "Service Revenue"), ("RENT", "Rent"), ("Electricity", "Electricity")):
+        t = next(t for k, t in txns.items() if desc in k)
+        admin.patch(f"/api/transactions/{t['id']}/", json={"sub_category": sub_id(admin, account)})
+    fin = admin.post("/api/transactions/finalize/", json={"statement": stmt["id"]}).json()
+    assert fin["posting"]["posted"] == 2 and fin["posting"]["already_in_books"] == 1
+    report = pnl()
+    assert report["summary"]["total_income"] == 6000  # invoice 5000 + imported 1000 - the deposit counted once
+    assert report["summary"]["total_expenses"] == 650 and report["uncategorized_count"] == 0
+
+    # Reopening the rent row takes its entry out of the books.
+    rent = next(t for k, t in txns.items() if "RENT" in k)
+    assert admin.post("/api/transactions/reopen/", json={"ids": [rent["id"]]}).json()["removed_from_books"] == 1
+    assert pnl()["summary"]["total_expenses"] == 400 and pnl()["uncategorized_count"] == 1
+    bs = admin.get("/api/reports/balance-sheet/", params={"period": "all_time"}).json()
+    assert bs["is_balanced"]
+
+
+def test_credit_and_debit_notes(admin):
+    gst18 = next(t for t in admin.get("/api/tax-rates/").json()["results"] if t["name"] == "GST 18%")
+    client_ = admin.post("/api/clients/", json={"name": "Acme"}).json()
+    inv = admin.post("/api/sales-invoices/", json={"client_id": client_["id"], "invoice_date": d(0), "post": True,
+        "items": [{"description": "Widgets", "quantity": 10, "unit_price": "100", "tax_rate_id": gst18["id"],
+                   "account_id": sub_id(admin, "Product Sales")}]}).json()
+    assert inv["total"] == "1180.00"
+
+    # Credit 2 widgets back: 200 + 36 GST.
+    r = admin.post("/api/credit-notes/", json={"sales_invoice_id": inv["id"], "note_date": d(2), "reason": "2 returned",
+        "items": [{"description": "Widgets returned", "quantity": 2, "unit_price": "100", "tax_rate_id": gst18["id"],
+                   "account_id": sub_id(admin, "Product Sales")}]})
+    assert r.status_code == 201, r.text
+    note = r.json()
+    assert note["note_number"] == "CN-00001" and note["total"] == "236.00" and note["status"] == "POSTED"
+    inv = admin.get(f"/api/sales-invoices/{inv['id']}/").json()
+    assert inv["amount_credited"] == "236.00" and inv["balance_due"] == "944.00" and inv["status"] == "PARTIALLY_PAID"
+    entry = admin.get(f"/api/journal-entries/{note['journal_entry']}/").json()
+    lines = {l["sub_category_name"]: (l["debit"], l["credit"]) for l in entry["lines"]}
+    assert lines["Product Sales"] == ("200.00", "0.00") and lines["GST Payable"] == ("36.00", "0.00")
+    assert lines["Accounts Receivable"] == ("0.00", "236.00")
+    pnl = admin.get("/api/reports/profit-and-loss/", params={"period": "all_time"}).json()
+    assert pnl["summary"]["total_income"] == 800
+
+    # Can't credit more than is still due; the invoice can't be cancelled while a note is posted.
+    assert admin.post("/api/credit-notes/", json={"sales_invoice_id": inv["id"], "items": [
+        {"description": "x", "unit_price": "2000", "account_id": sub_id(admin, "Product Sales")}]}).status_code == 400
+    assert admin.post(f"/api/sales-invoices/{inv['id']}/cancel/").status_code == 400
+    statement = admin.get(f"/api/clients/{client_['id']}/statement/").json()
+    assert statement["closing_balance"] == 944 and statement["rows"][-1]["type"] == "CREDIT_NOTE"
+    assert admin.get("/api/reports/receivables-aging/", params={"as_of": d(2)}).json()["totals"]["total"] == 944
+
+    # Cancelling the note gives the amount back; then it can be deleted.
+    assert admin.post(f"/api/credit-notes/{note['id']}/cancel/").json()["status"] == "CANCELLED"
+    assert admin.get(f"/api/sales-invoices/{inv['id']}/").json()["balance_due"] == "1180.00"
+    assert admin.delete(f"/api/credit-notes/{note['id']}/").status_code == 204
+
+    # Debit note on a purchase bill.
+    supplier = admin.post("/api/suppliers/", json={"name": "Paper Co"}).json()
+    bill = admin.post("/api/purchase-bills/", json={"supplier_id": supplier["id"], "bill_number": "B1", "bill_date": d(0),
+        "post": True, "items": [{"description": "Paper", "unit_price": "500", "account_id": sub_id(admin, "Office Supplies")}]}).json()
+    dn = admin.post("/api/credit-notes/", json={"purchase_bill_id": bill["id"], "items": [
+        {"description": "Damaged", "unit_price": "500", "account_id": sub_id(admin, "Office Supplies")}]}).json()
+    assert dn["note_number"] == "DN-00001" and dn["kind"] == "PURCHASE"
+    assert admin.get(f"/api/purchase-bills/{bill['id']}/").json()["status"] == "PAID"  # fully settled by the note
+    assert admin.get("/api/credit-notes/", params={"kind": "PURCHASE"}).json()["count"] == 1
+
+
+def test_opening_balances_are_booked(admin):
+    c = admin.post("/api/clients/", json={"name": "Old Client", "opening_balance": "2500", "opening_balance_date": d(0)}).json()
+    entry = admin.get("/api/journal-entries/", params={"search": f"OB-C-{c['id']}"}).json()["results"][0]
+    lines = {l["sub_category_name"]: (l["debit"], l["credit"]) for l in entry["lines"]}
+    assert lines == {"Accounts Receivable": ("2500.00", "0.00"), "Opening Balance Equity": ("0.00", "2500.00")}
+    assert entry["date"] == d(0) and entry["source"] == "OPENING_BALANCE"
+    # Can't be deleted from the journal - it follows the client's opening balance.
+    assert admin.delete(f"/api/journal-entries/{entry['id']}/").status_code == 400
+
+    admin.patch(f"/api/clients/{c['id']}/", json={"opening_balance": "3000"})
+    entries = admin.get("/api/journal-entries/", params={"search": f"OB-C-{c['id']}"}).json()["results"]
+    assert len(entries) == 1 and entries[0]["total_debit"] == "3000.00"
+
+    s = admin.post("/api/suppliers/", json={"name": "Old Supplier", "opening_balance": "700"}).json()
+    sup_entry = admin.get("/api/journal-entries/", params={"search": f"OB-S-{s['id']}"}).json()["results"][0]
+    assert {l["sub_category_name"]: l["credit"] for l in sup_entry["lines"]}["Accounts Payable"] == "700.00"
+    bs = admin.get("/api/reports/balance-sheet/", params={"period": "all_time"}).json()
+    assert bs["is_balanced"] and bs["total_assets"] == 3000
+    assert admin.get("/api/journal-entries/", params={"source": "OPENING_BALANCE"}).json()["count"] == 2
+
+    admin.patch(f"/api/clients/{c['id']}/", json={"opening_balance": "0"})
+    assert admin.get("/api/journal-entries/", params={"search": f"OB-C-{c['id']}"}).json()["count"] == 0
+    assert admin.delete(f"/api/suppliers/{s['id']}/").status_code == 204
+    assert admin.get("/api/journal-entries/", params={"source": "OPENING_BALANCE"}).json()["count"] == 0

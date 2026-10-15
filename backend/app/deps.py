@@ -10,6 +10,7 @@ from .database import get_db
 from .errors import APIError
 from .models import User
 from .security import TokenError, decode_token
+from .services.audit import set_actor
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -28,6 +29,7 @@ def get_current_user(
     user = db.get(User, payload.get("user_id"))
     if user is None or not user.is_active:
         raise APIError(401, {"detail": "User not found", "code": "user_not_found"})
+    set_actor(db, user)  # the audit log names this user for everything the request changes
     return user
 
 

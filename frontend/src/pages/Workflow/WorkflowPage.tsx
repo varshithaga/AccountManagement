@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   RefreshCw, ArrowRight, Folders, Tag, Hash, Landmark, UploadCloud, Link2, Sparkles,
   ClipboardCheck, CheckCheck, Lock, BarChart3, CircleCheck, CircleDashed, AlertTriangle, Hourglass,
+  Users, FileText, HandCoins,
 } from 'lucide-react'
 import { workflowApi } from '../../api/resources'
 import type { WorkflowStatus } from '../../api/resources'
@@ -18,7 +19,7 @@ interface StepAction { label: string; to: string }
 
 interface Step {
   n: number
-  phase: 'setup' | 'monthly' | 'reports'
+  phase: 'setup' | 'monthly' | 'sales' | 'reports'
   title: string
   icon: React.ReactNode
   what: string
@@ -34,7 +35,7 @@ const fmtInr = (n: number) => new Intl.NumberFormat('en-IN', { style: 'currency'
 const ALL = 'period=all_time'
 
 function buildSteps(s: WorkflowStatus): Step[] {
-  const { setup, statements, transactions: t } = s
+  const { setup, statements, transactions: t, sales } = s
   const hasStatements = statements.total > 0
   const afterUpload = (state: StepState): StepState => (hasStatements ? state : 'waiting')
 
@@ -145,10 +146,12 @@ function buildSteps(s: WorkflowStatus): Step[] {
       actions: [{ label: 'Open Transactions', to: `/transactions?status=AUTO_ASSIGNED&${ALL}` }],
     },
     {
-      n: 10, phase: 'monthly', title: 'Make Final (lock)', icon: <Lock className="h-5 w-5" />,
-      what: 'When a month is done, lock its transactions. Final transactions can\'t be re-categorized or deleted, and their statement can\'t be deleted or re-parsed, until someone Reopens them.',
+      n: 10, phase: 'monthly', title: 'Make Final (lock and post to the books)', icon: <Lock className="h-5 w-5" />,
+      what: 'When a month is done, lock its transactions. Making a transaction final also posts it to the journal (the books) and matches it in Bank Reconciliation - from then on it counts in the reports. Final transactions can\'t be re-categorized or deleted, and their statement can\'t be deleted or re-parsed, until someone Reopens them (which takes them back out of the books).',
       todo: [
         'Transactions → select rows → Make Final, or "Make All Final" on a statement.',
+        'A transaction already in the books through an imported entry or a payment is matched, not posted twice.',
+        'The bank had no GL account when you made it final? Link it, then use "Post to books" in the General Ledger.',
         'Need a correction later? Reopen, fix, and make it final again.',
       ],
       state: afterUpload(t.ready_to_finalize > 0 ? 'todo' : 'done'),
@@ -156,12 +159,60 @@ function buildSteps(s: WorkflowStatus): Step[] {
       actions: [{ label: 'Open confirmed transactions', to: `/transactions?confirmed=true&${ALL}` }],
     },
     {
-      n: 11, phase: 'reports', title: 'Read the reports', icon: <BarChart3 className="h-5 w-5" />,
-      what: 'Reports update as soon as transactions are categorized. They leave out Needs Review suggestions (until accepted), transfers between your own accounts, and detected duplicates.',
+      n: 11, phase: 'sales', title: 'Add clients, suppliers and products', icon: <Users className="h-5 w-5" />,
+      what: 'The people you sell to and buy from, and the goods or services you sell. A client or supplier with an opening balance (what was owed before you started) has it booked against "Opening Balance Equity", so it is on the Balance Sheet.',
+      todo: [
+        'Clients / Suppliers → add each one with its GSTIN and state - the state decides CGST + SGST or IGST.',
+        'Set your own company state once under Period Close.',
+        'Products & Tax Rates → check the GST rates and add what you sell, with its income account.',
+      ],
+      state: sales.clients + sales.suppliers > 0 ? 'done' : 'optional',
+      metric: `${fmtNum(sales.clients)} clients · ${fmtNum(sales.suppliers)} suppliers · ${fmtNum(sales.products)} products · ${fmtNum(sales.tax_rates)} tax rates`,
+      actions: [
+        { label: 'Clients', to: '/clients' },
+        { label: 'Suppliers', to: '/suppliers' },
+        { label: 'Products', to: '/products' },
+      ],
+    },
+    {
+      n: 12, phase: 'sales', title: 'Raise invoices and record bills', icon: <FileText className="h-5 w-5" />,
+      what: 'A sales invoice stays a draft until you Post it - posting books it (Dr Receivable, Cr income and output GST). A purchase bill is the reverse. Returns and discounts are a credit note (on an invoice) or a debit note (on a bill). Any document can be printed or downloaded as a PDF.',
+      todo: [
+        'Sales Invoices → New invoice → Post when it is final. Drafts are not in the books.',
+        'Purchase Bills → record each supplier bill and Post it.',
+        'Goods returned or a price corrected? Open the document → Credit note / Debit note.',
+      ],
+      state: sales.draft_invoices + sales.draft_bills > 0 ? 'attention' : (sales.invoices + sales.bills > 0 ? 'done' : 'optional'),
+      metric: `${fmtNum(sales.invoices)} invoices (${fmtNum(sales.draft_invoices)} draft) · ${fmtNum(sales.bills)} bills (${fmtNum(sales.draft_bills)} draft)`,
+      actions: [
+        { label: 'Sales Invoices', to: '/sales-invoices' },
+        { label: 'Purchase Bills', to: '/purchase-bills' },
+      ],
+    },
+    {
+      n: 13, phase: 'sales', title: 'Record payments and follow up what is due', icon: <HandCoins className="h-5 w-5" />,
+      what: 'Money received from a client or paid to a supplier is a payment, allocated to the invoices or bills it settles. Receivables & Payables shows who owes what and how overdue it is.',
+      todo: [
+        'Payments & Receipts → record the payment and allocate it to its invoices / bills.',
+        'Receivables & Payables → chase overdue invoices and plan supplier payments.',
+        'Bank Reconciliation → match the payment to its line on the bank statement.',
+      ],
+      state: sales.overdue_invoices + sales.overdue_bills + sales.unallocated_payments > 0
+        ? 'attention' : (sales.payments > 0 ? 'done' : 'optional'),
+      metric: `${fmtNum(sales.overdue_invoices)} overdue invoices · ${fmtNum(sales.overdue_bills)} overdue bills · ${fmtNum(sales.unallocated_payments)} payments not fully allocated`,
+      actions: [
+        { label: 'Payments & Receipts', to: '/payments' },
+        { label: 'Receivables & Payables', to: '/receivables-payables' },
+      ],
+    },
+    {
+      n: 14, phase: 'reports', title: 'Read the reports', icon: <BarChart3 className="h-5 w-5" />,
+      what: 'Every report adds up the journal (the books): manual and imported entries, posted invoices, bills, payments and credit notes, opening balances, and bank transactions once they are final. Bank transactions not in the books yet are counted on each report, so nothing is silently missing.',
       todo: [
         'Profit & Loss - income minus expenses for a period.',
         'Balance Sheet - assets = liabilities + equity at a date.',
-        'Trial Balance - total debits = total credits.',
+        'Trial Balance - the balance of every account; debits = credits.',
+        'GST Summary - output GST, input credit and the net payable, split CGST / SGST / IGST.',
         'Period Comparison - two periods side by side. Every report exports to Excel.',
       ],
       state: 'info',
@@ -170,6 +221,7 @@ function buildSteps(s: WorkflowStatus): Step[] {
         { label: 'Profit & Loss', to: '/profit-and-loss' },
         { label: 'Balance Sheet', to: '/balance-sheet' },
         { label: 'Trial Balance', to: '/trial-balance' },
+        { label: 'GST Summary', to: '/gst-summary' },
         { label: 'Comparison', to: '/reports/comparison' },
       ],
     },
@@ -188,6 +240,7 @@ const STATE_STYLE: Record<StepState, { label: string; chip: string; ring: string
 const PHASES: { key: Step['phase']; title: string; subtitle: string }[] = [
   { key: 'setup', title: 'One-time setup', subtitle: 'Do these once. Come back whenever you add a category, keyword or bank account.' },
   { key: 'monthly', title: 'Every month - for each new statement', subtitle: 'Repeat for every statement you upload.' },
+  { key: 'sales', title: 'Sales & Purchases', subtitle: 'Optional - for invoices you raise and supplier bills you record here.' },
   { key: 'reports', title: 'Reports', subtitle: 'Available at any time.' },
 ]
 
@@ -197,8 +250,8 @@ const LIFECYCLE: { label: string; note: string; tone: string }[] = [
   { label: 'Auto-Categorize', note: 'Auto-assigned / Needs review / Uncategorized / Transfer', tone: 'bg-violet-500/15 text-primary' },
   { label: 'You review', note: 'Accept a suggestion or pick a category - Manually assigned', tone: 'bg-amber-500/15 text-warning-text' },
   { label: 'Confirmed ', note: 'Never changed by Auto-Categorize; teaches it', tone: 'bg-emerald-500/15 text-success-text' },
-  { label: 'Final ', note: 'Locked until reopened', tone: 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900' },
-  { label: 'Reports', note: 'P&L, Balance Sheet, Trial Balance', tone: 'bg-info/15 text-info-text' },
+  { label: 'Final ', note: 'Locked and posted to the books', tone: 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900' },
+  { label: 'Reports', note: 'P&L, Balance Sheet, Trial Balance - from the books', tone: 'bg-info/15 text-info-text' },
 ]
 
 // ---------------------------------------------------------------- UI

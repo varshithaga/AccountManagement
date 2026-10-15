@@ -202,8 +202,8 @@ export default function CashFlowPage() {
               <div className="flex items-center gap-3">
                 <AlertTriangle className="h-5 w-5 shrink-0 text-warning-text" />
                 <p className="text-sm text-warning-text">
-                  {report.uncategorized_count} transaction{report.uncategorized_count === 1 ? ' is' : 's are'} not categorized yet
-                  ({formatMoney(report.uncategorized_net)} net) - they are counted in the cash change but in no activity.
+                  {report.uncategorized_count} bank transaction{report.uncategorized_count === 1 ? ' is' : 's are'} not in the books yet
+                  ({formatMoney(report.uncategorized_net)} net) - categorize and finalize them (or match them in Bank Reconciliation) to include them.
                 </p>
               </div>
               {hasPage('transactions') && (
@@ -274,7 +274,6 @@ export default function CashFlowPage() {
                   { label: 'Cash at beginning of period', value: report.opening_cash },
                   ...report.sections.map((s) => ({ label: `Net cash from ${s.label.toLowerCase()}`, value: s.net })),
                   { label: `Transfers between own accounts (${report.transfers_count} transaction${report.transfers_count === 1 ? '' : 's'})`, value: report.transfers_net },
-                  { label: `Uncategorized / needs review (${report.uncategorized_count})`, value: report.uncategorized_net },
                 ].map((row) => (
                   <tr key={row.label}>
                     <td className="px-6 py-3 text-muted">{row.label}</td>

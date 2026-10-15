@@ -13,6 +13,7 @@ from ..security import (
     TokenError, check_password, create_token_pair, decode_token, hash_password, password_errors, rate_limited,
     revoke, rotate_refresh_token,
 )
+from ..services import audit
 from ..utils import now
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -29,8 +30,12 @@ def login(body: LoginIn, request: Request, db: Session = Depends(get_db)):
     _throttle(request)
     user = db.scalars(select(User).where(User.username == body.username)).first()
     if user is None or not user.is_active or not check_password(body.password, user.hashed_password):
+        audit.record(db, "LOGIN_FAILED", "User", label=(body.username or "")[:150], entity_id=user.id if user else None,
+                     username=(body.username or "")[:150])
+        db.commit()
         raise APIError(401, {"detail": "No active account found with the given credentials"})
     user.last_login = now()
+    audit.record(db, "LOGIN", "User", label=user.username, entity_id=user.id, user=user)
     db.commit()
     return create_token_pair(user)
 
@@ -69,6 +74,7 @@ def register(body: RegisterIn, request: Request, db: Session = Depends(get_db)):
     user = User(username=username, hashed_password=hash_password(password), email=email,
                 first_name=(body.first_name or "").strip(), last_name=(body.last_name or "").strip(),
                 role_id=role.id if role else None)
+    db.info["actor"] = (None, username)  # logged as signing themselves up
     db.add(user)
     db.commit()
     tokens = create_token_pair(user)

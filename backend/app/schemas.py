@@ -145,6 +145,12 @@ class AccountingSettingsIn(Body):
     default_receivable_account: Optional[int] = None
     default_payable_account: Optional[int] = None
     default_cash_account: Optional[int] = None
+    company_name: Optional[str] = None
+    company_gstin: Optional[str] = None
+    company_state: Optional[str] = None
+    company_address: Optional[str] = None
+    company_email: Optional[str] = None
+    company_phone: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +187,21 @@ class JournalImportIn(Body):
     dry_run: Any = False
     include_duplicates: Any = False
     entries: Any = None
+
+
+class ManualLineIn(Body):
+    sub_category_id: Optional[int] = None
+    description: Optional[str] = ""
+    debit: Any = None
+    credit: Any = None
+
+
+class ManualEntryIn(Body):
+    """A manual double-entry voucher: entry_number is generated (JV-00001...) when left empty."""
+    entry_number: Optional[str] = None
+    date: Optional[str] = None
+    narration: Optional[str] = ""
+    lines: list[ManualLineIn] = []
 
 
 class MonthScopeIn(Body):
@@ -249,6 +270,8 @@ class PartyIn(Body):
     state: Optional[str] = Field(default=None, max_length=100)
     payment_terms_days: Optional[int] = Field(default=None, ge=0, le=3650)
     opening_balance: Optional[Decimal] = Money
+    # The day the opening balance is booked on (default: today)
+    opening_balance_date: Optional[date] = None
     is_active: Optional[bool] = None
 
     _code = field_validator("code")(_strip_code)
@@ -305,6 +328,16 @@ class PurchaseBillIn(Body):
     notes: Optional[str] = None
     items: Optional[list[ItemIn]] = None
     post: bool = False
+
+
+class CreditNoteIn(Body):
+    """A credit note (on a sales invoice) or debit note (on a purchase bill) - posted when created."""
+    sales_invoice_id: Optional[int] = None
+    purchase_bill_id: Optional[int] = None
+    note_number: Optional[str] = Field(default=None, max_length=50)
+    note_date: Optional[date] = None
+    reason: Optional[str] = None
+    items: list[ItemIn] = []
 
 
 class AllocationIn(Body):

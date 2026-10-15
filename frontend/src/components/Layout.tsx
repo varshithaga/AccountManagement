@@ -5,7 +5,7 @@ import {
   Receipt, ArrowLeftRight, BarChart3, Wallet, Scale, GitCompare,
   Moon, Sun, X, BookOpen, Link2, ListChecks, BookOpenCheck, GitMerge, Users,
   ChevronDown, Settings, Lock, Waves, NotebookText, FlaskConical,
-  Contact, Truck, Package, FileText, ShoppingCart, HandCoins, Hourglass,
+  Contact, Truck, Package, FileText, ShoppingCart, HandCoins, Hourglass, Percent, History,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { ALL_PAGES, PAGE_GROUPS, type PageKey } from '../access/pages'
@@ -57,7 +57,9 @@ const PAGE_ICONS: Record<PageKey, React.ReactNode> = {
   trial_balance: <Scale className={ICON} />,
   account_ledger: <NotebookText className={ICON} />,
   reports_comparison: <GitCompare className={ICON} />,
+  gst_summary: <Percent className={ICON} />,
   user_management: <Users className={ICON} />,
+  audit_log: <History className={ICON} />,
 }
 
 /** Short headings for the sidebar groups and the breadcrumb. */

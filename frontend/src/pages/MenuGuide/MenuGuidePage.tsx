@@ -7,6 +7,7 @@ import {
 import { useAuth } from '../../context/AuthContext'
 import { SINGLE_ROLE_MENU } from './menuGuideData'
 import type { DemoItem } from './menuGuideData'
+import SalesExamples from './SalesExamples'
 
 export default function MenuGuidePage() {
   const { hasPage } = useAuth()
@@ -589,7 +590,7 @@ export default function MenuGuidePage() {
               {selectedMenuId === 'journal_entries' && (
                 <div className="space-y-4 text-xs">
                   <div className="p-3 rounded-xl bg-info-soft text-info-text dark:text-info-text font-medium">
-                    <strong>How it works:</strong> Download the template, fill in one row per line and <strong>import the Excel file</strong>. Each entry must <strong>balance</strong> (total debit = total credit). An import can be <strong>undone</strong> as a whole batch.
+                    <strong>How it works:</strong> Click <strong>New journal entry</strong> and add debit and credit lines until both sides are equal - or import many at once from Excel / JSON (an import can be <strong>undone</strong> as a whole batch). Each entry must <strong>balance</strong> (total debit = total credit). Invoices, bills, payments and final bank transactions add their own entries.
                   </div>
 
                   <div className="rounded-xl border border-border bg-slate-50 p-3 dark:bg-slate-800/40 space-y-2">
@@ -865,6 +866,8 @@ export default function MenuGuidePage() {
                 </div>
               )}
 
+              <SalesExamples id={selectedMenuId} />
+
               {/* 12. PERIOD COMPARISON */}
               {selectedMenuId === 'comparison' && (
                 <div className="space-y-4 text-xs">
@@ -908,9 +911,9 @@ export default function MenuGuidePage() {
                   <div className="space-y-3">
                     {[
                       { role: 'Admin', tag: 'Fixed', pages: ['All pages, including User Management'] },
-                      { role: 'Accountant', tag: 'Editable', pages: ['Everything except User Management'] },
-                      { role: 'Bookkeeper', tag: 'Editable', pages: ['Bank Statements', 'General Ledger', 'Journal Entries', 'Bank Reconciliation'] },
-                      { role: 'Viewer', tag: 'Editable', pages: ['Dashboard', 'Profit & Loss', 'Balance Sheet', 'Trial Balance'] },
+                      { role: 'Accountant', tag: 'Editable', pages: ['Everything except User Management and the Audit Log'] },
+                      { role: 'Bookkeeper', tag: 'Editable', pages: ['Bank Statements', 'General Ledger', 'Journal Entries', 'Invoices, Bills & Payments', 'Bank Reconciliation'] },
+                      { role: 'Viewer', tag: 'Editable', pages: ['Dashboard', 'Profit & Loss', 'Balance Sheet', 'Trial Balance', 'GST Summary'] },
                     ].map((r) => (
                       <div key={r.role} className="rounded-2xl border border-border bg-slate-50 p-4 dark:bg-slate-800/40 space-y-2">
                         <div className="font-bold text-ink flex items-center justify-between">

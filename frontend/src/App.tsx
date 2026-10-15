@@ -36,6 +36,8 @@ const ProductsPage = lazy(() => import('./pages/Billing/ProductsPage'))
 const DocumentsPage = lazy(() => import('./pages/Billing/DocumentsPage'))
 const PaymentsPage = lazy(() => import('./pages/Billing/PaymentsPage'))
 const ReceivablesPayablesPage = lazy(() => import('./pages/Billing/ReceivablesPayablesPage'))
+const GstSummaryPage = lazy(() => import('./pages/GstSummary/GstSummaryPage'))
+const AuditLogPage = lazy(() => import('./pages/AuditLog/AuditLogPage'))
 
 export default function App() {
   return (
@@ -79,7 +81,9 @@ export default function App() {
             <Route path="/balance-sheet" element={<RequirePage page="balance_sheet"><BalanceSheetPage /></RequirePage>} />
             <Route path="/trial-balance" element={<RequirePage page="trial_balance"><TrialBalancePage /></RequirePage>} />
             <Route path="/reports/comparison" element={<RequirePage page="reports_comparison"><ReportsComparisonPage /></RequirePage>} />
+            <Route path="/gst-summary" element={<RequirePage page="gst_summary"><GstSummaryPage /></RequirePage>} />
             <Route path="/users" element={<RequirePage page="user_management"><UserManagementPage /></RequirePage>} />
+            <Route path="/audit-log" element={<RequirePage page="audit_log"><AuditLogPage /></RequirePage>} />
             <Route path="/testing/delete-month-journals" element={<RequirePage page="journal_entries"><DeleteMonthJournalsPage /></RequirePage>} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="*" element={<NotFoundPage />} />

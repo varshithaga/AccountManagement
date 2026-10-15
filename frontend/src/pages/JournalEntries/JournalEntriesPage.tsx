@@ -2,11 +2,12 @@ import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'reac
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   BookOpenCheck, Search, X, Trash2, RefreshCw, FileSpreadsheet, Download, ChevronRight,
-  ChevronDown, History, Undo2, ArrowDownLeft, ArrowUpRight, Layers, FileDown, GitMerge, FileJson, Link2,
+  ChevronDown, History, Undo2, ArrowDownLeft, ArrowUpRight, Layers, FileDown, GitMerge, FileJson, Link2, Plus, Pencil,
 } from 'lucide-react'
 import { journalEntriesApi, type JournalImportResult, type JournalSummary } from './journalentriesapi'
 import { downloadJournalSample, downloadJournalSampleJson } from './journalTemplate'
 import JournalImportDialog from './JournalImportDialog'
+import ManualEntryDialog from './ManualEntryDialog'
 import MatchDialog from '../BankReconciliation/MatchDialog'
 import type { MatchTarget } from '../BankReconciliation/bankreconciliationapi'
 import Pagination, { DEFAULT_ROWS_PER_PAGE } from '../../components/Pagination'
@@ -19,7 +20,19 @@ import { exportToExcel } from '../../utils/excelExport'
 import { useAuth } from '../../context/AuthContext'
 import { apiErrorText, withUnmatchConfirm } from '../../utils/reconcileConfirm'
 
-const SOURCE_LABEL: Record<JournalSource, string> = { EXCEL: 'Excel', JSON: 'JSON file', API: 'External API' }
+const SOURCE_LABEL: Record<JournalSource, string> = {
+  EXCEL: 'Excel', JSON: 'JSON file', API: 'External API', MANUAL: 'Manual', BANK: 'Bank transaction',
+  SALES_INVOICE: 'Sales invoice', PURCHASE_BILL: 'Purchase bill', PAYMENT: 'Payment',
+  CREDIT_NOTE: 'Credit / debit note', OPENING_BALANCE: 'Opening balance',
+}
+
+const SOURCE_TONE: Record<JournalSource, 'success' | 'primary' | 'info' | 'warning' | 'neutral'> = {
+  EXCEL: 'success', JSON: 'primary', API: 'info', MANUAL: 'warning', BANK: 'neutral',
+  SALES_INVOICE: 'neutral', PURCHASE_BILL: 'neutral', PAYMENT: 'neutral', CREDIT_NOTE: 'neutral', OPENING_BALANCE: 'neutral',
+}
+
+/** Entries an invoice, bill or payment posted - removed by cancelling / deleting that document instead. */
+const fromDocument = (entry: JournalEntry) => entry.origin !== null && entry.origin !== 'MANUAL'
 
 const RECONCILE_META: Record<JournalReconcileStatus, { label: string; tone: 'success' | 'warning' | 'neutral'; title: string }> = {
   RECONCILED: { label: 'Reconciled', tone: 'success', title: 'Every bank line is matched to a bank statement transaction' },
@@ -51,6 +64,8 @@ export default function JournalEntriesPage() {
   const { can } = useAuth()
   const canCreate = can('journal_entries', 'create')
   const canDelete = can('journal_entries', 'delete')
+  const canEdit = can('journal_entries', 'edit')
+  const [manualEntry, setManualEntry] = useState<JournalEntry | 'new' | null>(null)
   const canMatch = can('bank_reconciliation', 'edit')
   const [matching, setMatching] = useState<MatchTarget | null>(null)
   const navigate = useNavigate()
@@ -254,7 +269,7 @@ export default function JournalEntriesPage() {
           <div>
             <h1 className="text-ink">Journal Entries</h1>
             <p className="mt-1.5 max-w-3xl text-[15px] text-muted">
-              Balanced double-entry vouchers imported from an Excel or JSON file, or pushed by external systems via the import API.
+              Balanced double-entry vouchers - entered by hand, imported from an Excel or JSON file, pushed by external systems, or posted by invoices, bills and payments.
             </p>
           </div>
         </div>
@@ -282,12 +297,17 @@ export default function JournalEntriesPage() {
           </button>
           {canCreate && (
             <Button
-              variant="contained"
+              variant="outlined"
               icon={<FileSpreadsheet className="h-4 w-4" />}
               onClick={() => setImportOpen(true)}
               className="px-4 py-2.5"
             >
               Import Excel / JSON
+            </Button>
+          )}
+          {canCreate && (
+            <Button variant="contained" icon={<Plus className="h-4 w-4" />} onClick={() => setManualEntry('new')} className="px-4 py-2.5">
+              New journal entry
             </Button>
           )}
         </div>
@@ -349,6 +369,13 @@ export default function JournalEntriesPage() {
             <option value="EXCEL">Excel</option>
             <option value="JSON">JSON file</option>
             <option value="API">External API</option>
+            <option value="MANUAL">Manual</option>
+            <option value="SALES_INVOICE">Sales invoices</option>
+            <option value="PURCHASE_BILL">Purchase bills</option>
+            <option value="PAYMENT">Payments</option>
+            <option value="BANK">Bank transactions</option>
+            <option value="CREDIT_NOTE">Credit / debit notes</option>
+            <option value="OPENING_BALANCE">Opening balances</option>
           </Select>
           <Select id="je-reconciled" label="Reconciliation" value={reconciled} onChange={(e) => setFilter(setReconciled)(e.target.value as 'true' | 'false' | '')}>
             <option value="">All</option>
@@ -386,7 +413,7 @@ export default function JournalEntriesPage() {
                     <th className={TH}>Reconciled</th>
                     <th className={`${TH} text-right`}>Debit</th>
                     <th className={`${TH} text-right`}>Credit</th>
-                    <th className={`${TH} text-right`}>{canDelete && 'Actions'}</th>
+                    <th className={`${TH} text-right`}>{(canDelete || canEdit) && 'Actions'}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border-soft">
@@ -409,8 +436,8 @@ export default function JournalEntriesPage() {
                           </td>
                           <td className="px-4 py-3 text-muted">{entry.bank_account_name || '—'}</td>
                           <td className="px-4 py-3">
-                            <Chip tone={entry.source === 'EXCEL' ? 'success' : entry.source === 'JSON' ? 'primary' : 'info'} variant="outline" title={entry.source_name || undefined}>
-                              {SOURCE_LABEL[entry.source]}
+                            <Chip tone={SOURCE_TONE[entry.source] ?? 'info'} variant="outline" title={entry.source_name || undefined}>
+                              {SOURCE_LABEL[entry.source] ?? entry.source}
                             </Chip>
                           </td>
                           <td className="whitespace-nowrap px-4 py-3">
@@ -429,8 +456,18 @@ export default function JournalEntriesPage() {
                           </td>
                           <td className="px-4 py-3 text-right font-semibold tabular-nums text-ink">{fmtAmount(entry.total_debit)}</td>
                           <td className="px-4 py-3 text-right font-semibold tabular-nums text-ink">{fmtAmount(entry.total_credit)}</td>
-                          <td className="px-4 py-3 text-right">
-                            {canDelete && (
+                          <td className="whitespace-nowrap px-4 py-3 text-right">
+                            {canEdit && entry.origin === 'MANUAL' && (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setManualEntry(entry) }}
+                                title="Edit entry"
+                                className="rounded-lg p-2 text-muted transition-colors hover:bg-surface-muted hover:text-ink"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                            )}
+                            {canDelete && !fromDocument(entry) && (
                               <button
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); remove(entry) }}
@@ -540,7 +577,7 @@ export default function JournalEntriesPage() {
               {narrowed
                 ? 'Choose another period (or All) in the Period filter.'
                 : canCreate
-                  ? 'Import them from an Excel or JSON file, or push them from another system via POST /api/journal-entries/import/.'
+                  ? 'Enter one by hand, import them from an Excel or JSON file, or push them from another system via POST /api/journal-entries/import/.'
                   : 'Nothing to show yet.'}
             </p>
             {!narrowed && canCreate && (
@@ -551,8 +588,11 @@ export default function JournalEntriesPage() {
                 <Button variant="outlined" icon={<FileJson className="h-4 w-4" />} onClick={() => handleDownloadSample('json')} disabled={downloadingSample} className="px-4 py-2">
                   JSON Sample
                 </Button>
-                <Button variant="contained" icon={<FileSpreadsheet className="h-4 w-4" />} onClick={() => setImportOpen(true)} className="px-4 py-2">
+                <Button variant="outlined" icon={<FileSpreadsheet className="h-4 w-4" />} onClick={() => setImportOpen(true)} className="px-4 py-2">
                   Import Excel / JSON
+                </Button>
+                <Button variant="contained" icon={<Plus className="h-4 w-4" />} onClick={() => setManualEntry('new')} className="px-4 py-2">
+                  New journal entry
                 </Button>
               </div>
             )}
@@ -617,6 +657,19 @@ export default function JournalEntriesPage() {
       </Modal>
 
       {/* EXCEL IMPORT */}
+      {manualEntry && (
+        <ManualEntryDialog
+          entry={manualEntry === 'new' ? null : manualEntry}
+          onClose={() => setManualEntry(null)}
+          onSaved={(saved, warnings) => {
+            const edited = manualEntry !== 'new'
+            setManualEntry(null)
+            setNotice(`Entry ${saved.entry_number} ${edited ? 'updated' : 'saved'}.${warnings.length ? ` ${warnings.join(' ')}` : ''}`)
+            fetchEntries()
+          }}
+        />
+      )}
+
       <JournalImportDialog
         open={importOpen}
         onClose={() => setImportOpen(false)}

@@ -502,7 +502,7 @@ CHART_OF_ACCOUNTS = {
         ],
     },
     "EQUITY": {
-        "Owner's Equity": ["Owner Capital", "Additional Capital"],
+        "Owner's Equity": ["Owner Capital", "Additional Capital", "Opening Balance Equity"],
         "Retained Earnings": ["Retained Earnings"],
         "Drawings": ["Owner Drawings"],
     },

@@ -21,6 +21,8 @@ export interface Party {
   state: string
   payment_terms_days: number
   opening_balance: string
+  /** The day the opening balance is booked on (journal entry OB-C-<id> / OB-S-<id>). */
+  opening_balance_date: string | null
   is_active: boolean
   created_at: string
   outstanding: string | null
@@ -79,8 +81,47 @@ export interface DocItem {
   amount: string
   tax_amount: string
   line_total: string
+  /** tax_amount split: CGST + SGST within the company's state, IGST across states. */
+  cgst_amount: string
+  sgst_amount: string
+  igst_amount: string
+  hsn_sac_code: string
+  unit: string
   account: number
   account_name: string
+}
+
+/** GST fields shared by invoices, bills and notes. Detail responses carry the split totals. */
+export interface GstFields {
+  /** The party's state when the document was saved. */
+  place_of_supply: string
+  /** Another state than the company's: IGST instead of CGST + SGST. */
+  is_interstate: boolean
+  cgst_amount?: string
+  sgst_amount?: string
+  igst_amount?: string
+}
+
+/** What a document prints about its client / supplier. */
+export interface PrintParty {
+  name: string
+  gstin: string
+  pan: string
+  address: string
+  state: string
+  email: string
+  phone: string
+  contact_person: string
+}
+
+/** The company itself (Period Close → Company details). */
+export interface Company {
+  name: string
+  gstin: string
+  state: string
+  address: string
+  email: string
+  phone: string
 }
 
 export interface DocPayment {
@@ -93,7 +134,7 @@ export interface DocPayment {
 }
 
 /** A sales invoice or a purchase bill - the shared fields plus each one's own number / party / date. */
-export interface BillingDoc {
+export interface BillingDoc extends GstFields {
   id: number
   invoice_number?: string
   client?: number
@@ -108,6 +149,8 @@ export interface BillingDoc {
   tax_amount: string
   total: string
   amount_paid: string
+  /** Taken off by posted credit / debit notes. */
+  amount_credited: string
   balance_due: string
   status: DocStatus
   notes: string
@@ -117,6 +160,32 @@ export interface BillingDoc {
   created_at: string
   items?: DocItem[]
   payments?: DocPayment[]
+  credit_notes?: NoteSummary[]
+  party?: PrintParty
+}
+
+export interface NoteSummary {
+  id: number
+  note_number: string
+  note_date: string
+  total: string
+  status: 'POSTED' | 'CANCELLED'
+  reason: string
+}
+
+/** A credit note (on a sales invoice) or debit note (on a purchase bill). Posted when created. */
+export interface CreditNote extends NoteSummary, GstFields {
+  kind: 'SALES' | 'PURCHASE'
+  sales_invoice: number | null
+  purchase_bill: number | null
+  document_number: string
+  party_name: string
+  subtotal: string
+  tax_amount: string
+  journal_entry: number | null
+  journal_entry_number: string | null
+  items: DocItem[]
+  party: PrintParty
 }
 
 export interface DocSummary {
@@ -159,7 +228,7 @@ export interface Payment {
 
 export interface StatementRow {
   date: string
-  type: 'INVOICE' | 'BILL' | 'RECEIPT' | 'PAYMENT'
+  type: 'INVOICE' | 'BILL' | 'RECEIPT' | 'PAYMENT' | 'CREDIT_NOTE' | 'DEBIT_NOTE'
   id: number
   number: string
   due_date: string | null
@@ -286,6 +355,77 @@ export const paymentsApi = {
     (await api.post(`/payments/${id}/allocate/`, { allocations })).data,
   removeAllocation: async (id: number, allocationId: number): Promise<Payment> =>
     (await api.delete(`/payments/${id}/allocations/${allocationId}/`)).data,
+}
+
+export const creditNotesApi = {
+  create: async (payload: Params): Promise<CreditNote> => (await api.post('/credit-notes/', payload)).data,
+  get: async (id: number): Promise<CreditNote> => (await api.get(`/credit-notes/${id}/`)).data,
+  cancel: async (id: number, confirmUnmatch = false): Promise<CreditNote> =>
+    (await api.post(`/credit-notes/${id}/cancel/`, confirmParams(confirmUnmatch))).data,
+  remove: (id: number) => api.delete(`/credit-notes/${id}/`),
+}
+
+export const companyApi = {
+  get: async (): Promise<Company> => (await api.get('/period-close/company/')).data,
+}
+
+export interface GstTotals {
+  taxable: number
+  cgst: number
+  sgst: number
+  igst: number
+  tax: number
+}
+
+export interface GstRateRow extends GstTotals {
+  rate: number
+  name: string
+}
+
+export interface GstDocument extends GstTotals {
+  kind: 'INVOICE' | 'CREDIT_NOTE' | 'BILL' | 'DEBIT_NOTE'
+  id: number
+  number: string
+  date: string
+  party: string
+  gstin: string
+  place_of_supply: string
+  is_interstate: boolean
+  total: number
+}
+
+export interface GstSummary {
+  period: string
+  date_from: string | null
+  date_to: string | null
+  company: { state: string; gstin: string }
+  outward: GstTotals & {
+    by_rate: GstRateRow[]
+    b2b: GstTotals
+    b2c: GstTotals
+    intra_state: GstTotals
+    inter_state: GstTotals
+  }
+  inward: GstTotals & { by_rate: GstRateRow[] }
+  input_tax_credit: GstTotals
+  ineligible_input_tax: number
+  /** Positive = to pay; negative = credit carried forward. */
+  net_payable: { cgst: number; sgst: number; igst: number; total: number }
+  hsn_summary: (GstTotals & { hsn_sac_code: string; unit: string; quantity: number })[]
+  documents: GstDocument[]
+}
+
+export interface GstParams {
+  period: string
+  date_from?: string
+  date_to?: string
+}
+
+export const gstApi = {
+  summary: async (params: GstParams, signal?: AbortSignal): Promise<GstSummary> =>
+    (await api.get('/reports/gst-summary/', { params, signal })).data,
+  exportCsv: async (params: GstParams): Promise<Blob> =>
+    (await api.get('/reports/gst-summary/', { params: { ...params, format: 'csv' }, responseType: 'blob' })).data,
 }
 
 export const agingApi = {

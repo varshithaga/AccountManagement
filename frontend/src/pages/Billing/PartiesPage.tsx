@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { Contact, Truck, Plus, Pencil, Trash2, RefreshCw, FileText, Wallet, CheckCircle2, Download } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import Pagination, { DEFAULT_ROWS_PER_PAGE } from '../../components/Pagination'
-import { Alert, Button, Drawer, IconButton, Modal, Panel, Spinner, Switch, Tabs, TextField } from '../../components/tw'
+import { Alert, Button, DateField, Drawer, IconButton, Modal, Panel, Select, Spinner, Switch, Tabs, TextField } from '../../components/tw'
+import { stateFromGstin, stateOptions } from '../../constants/indianStates'
 import { EmptyState, KpiTile, PageHeader, RowAction, SearchBox } from '../../components/PageParts'
 import { formatMoney } from '../../utils/periods'
 import { exportToExcel } from '../../utils/excelExport'
@@ -23,6 +24,7 @@ interface FormState {
   state: string
   payment_terms_days: string
   opening_balance: string
+  opening_balance_date: string
   address: string
   shipping_address: string
   account: number | null
@@ -31,7 +33,7 @@ interface FormState {
 
 const EMPTY: FormState = {
   name: '', code: '', contact_person: '', email: '', phone: '', gstin: '', pan: '', state: '',
-  payment_terms_days: '30', opening_balance: '0', address: '', shipping_address: '', account: null, is_active: true,
+  payment_terms_days: '30', opening_balance: '0', opening_balance_date: '', address: '', shipping_address: '', account: null, is_active: true,
 }
 
 const TEXT = {
@@ -110,7 +112,7 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
     setForm({
       name: p.name, code: p.code ?? '', contact_person: p.contact_person, email: p.email, phone: p.phone,
       gstin: p.gstin ?? '', pan: p.pan, state: p.state, payment_terms_days: String(p.payment_terms_days),
-      opening_balance: p.opening_balance, address: (kind === 'clients' ? p.billing_address : p.address) ?? '',
+      opening_balance: p.opening_balance, opening_balance_date: p.opening_balance_date ?? '', address: (kind === 'clients' ? p.billing_address : p.address) ?? '',
       shipping_address: p.shipping_address ?? '',
       account: (kind === 'clients' ? p.receivable_account : p.payable_account) ?? null, is_active: p.is_active,
     })
@@ -127,7 +129,8 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
       name: form.name.trim(), code: form.code.trim() || null, contact_person: form.contact_person.trim(),
       email: form.email.trim(), phone: form.phone.trim(), gstin: form.gstin.trim() || null, pan: form.pan.trim(),
       state: form.state.trim(), payment_terms_days: Number(form.payment_terms_days) || 0,
-      opening_balance: form.opening_balance || '0', is_active: form.is_active,
+      opening_balance: form.opening_balance || '0', opening_balance_date: form.opening_balance_date || null,
+      is_active: form.is_active,
     }
     if (kind === 'clients') {
       payload.billing_address = form.address
@@ -294,17 +297,29 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
             onChange={(e) => setForm({ ...form, email: e.target.value })} />
           <TextField id="p-phone" label="Phone" value={form.phone}
             onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-          <TextField id="p-state" label="State (place of supply)" value={form.state}
-            onChange={(e) => setForm({ ...form, state: e.target.value })} />
+          <Select id="p-state" label="State (place of supply)" value={form.state}
+            onChange={(e) => setForm({ ...form, state: e.target.value })}>
+            <option value="">Not set</option>
+            {stateOptions(form.state).map((name) => <option key={name} value={name}>{name}</option>)}
+          </Select>
+          {/* The GSTIN's first two digits are the state code - fill the state in when it is still empty. */}
           <TextField id="p-gstin" label="GSTIN" placeholder="15 characters" value={form.gstin} inputClassName="num uppercase"
-            onChange={(e) => setForm({ ...form, gstin: e.target.value })} />
+            onChange={(e) => setForm({ ...form, gstin: e.target.value, state: form.state || stateFromGstin(e.target.value) })} />
           <TextField id="p-pan" label="PAN" value={form.pan} inputClassName="num uppercase"
             onChange={(e) => setForm({ ...form, pan: e.target.value })} />
           <TextField id="p-terms" label="Payment terms (days)" type="number" value={form.payment_terms_days} inputClassName="num"
             onChange={(e) => setForm({ ...form, payment_terms_days: e.target.value })} />
           <TextField id="p-opening" label="Opening balance" type="number" value={form.opening_balance} inputClassName="num"
             onChange={(e) => setForm({ ...form, opening_balance: e.target.value })} />
+          <DateField id="p-opening-date" label="Opening balance as of (default: today)" value={form.opening_balance_date}
+            onChange={(v) => setForm({ ...form, opening_balance_date: v })} />
         </div>
+        {Number(form.opening_balance) !== 0 && (
+          <p className="-mt-2 text-xs text-muted">
+            The opening balance is booked in the journal against "Opening Balance Equity", so it shows in the
+            Balance Sheet and in this {text.single}'s statement.
+          </p>
+        )}
         <TextField id="p-address" label={text.addressLabel} multiline rows={2} value={form.address}
           onChange={(e) => setForm({ ...form, address: e.target.value })} />
         {kind === 'clients' && (
@@ -370,7 +385,7 @@ function StatementDrawer({ kind, party, onClose }: { kind: PartyKind; party: Par
                     <td className={`${TD} whitespace-nowrap`}>{formatDate(r.date)}</td>
                     <td className={TD}>
                       <p className="font-semibold">{r.number}</p>
-                      <p className="text-xs text-muted">{r.type.charAt(0) + r.type.slice(1).toLowerCase()}{r.due_date ? ` · due ${formatDate(r.due_date)}` : ''}</p>
+                      <p className="text-xs text-muted">{(r.type.charAt(0) + r.type.slice(1).toLowerCase()).replace('_', ' ')}{r.due_date ? ` · due ${formatDate(r.due_date)}` : ''}</p>
                     </td>
                     <td className={`${TD} num text-right`}>{r.increase ? formatMoney(r.increase) : ''}</td>
                     <td className={`${TD} num text-right`}>{r.decrease ? formatMoney(r.decrease) : ''}</td>
