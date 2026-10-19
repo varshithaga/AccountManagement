@@ -1,5 +1,6 @@
-"""Backups: the database (pg_dump, or a copy of the SQLite file) and the uploaded files (media/), into
-one folder per backup under BACKUP_DIR, with a RESTORE.txt saying how to put it back.
+"""Backups: the database (pg_dump, or a copy of the SQLite file) and the uploaded files (media/) of every
+company, into one folder per backup under BACKUP_DIR, with a RESTORE.txt per company saying how to put
+it back.
 
 Restoring is deliberately not a command - it replaces everything in the database, so it is done by
 hand, following RESTORE.txt, into a database you have checked first.
@@ -63,11 +64,14 @@ def _copy_sqlite(url, target: Path) -> None:
         source.backup(copy)
 
 
-def _zip_media(media_root: Path, target: Path) -> int:
+def _zip_media(media_root: Path, target: Path, exclude: set[str] = frozenset()) -> int:
+    """Zips a media folder; `exclude` = top-level folders to leave out (other companies' uploads)."""
     count = 0
     with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as zf:
         if media_root.is_dir():
             for path in sorted(media_root.rglob('*')):
+                if path.relative_to(media_root).parts[0] in exclude:
+                    continue
                 if path.is_file():
                     zf.write(path, path.relative_to(media_root).as_posix())
                     count += 1
@@ -84,7 +88,7 @@ Contents
 Restore (replaces everything - check you have the right backup first)
   1. Stop the backend.
 {db_steps}
-  3. Unzip media.zip into the MEDIA_ROOT folder (empty it first).
+  3. Unzip media.zip into {media_root} (replacing its bank_statements folder - leave other companies' folders alone).
   4. cd backend, then: python cli.py migrate   (brings an older backup up to the current schema)
   5. Start the backend and sign in to check.
 """
@@ -96,39 +100,55 @@ PG_STEPS = """  2. Restore the database into an EMPTY database (create one in pg
 SQLITE_STEPS = """  2. Copy database.sqlite3 over {path} (keep the old file until you have checked)."""
 
 
+def _backup_database(url_text: str, folder: Path) -> tuple[str, str, str]:
+    """Dumps one database into folder; returns (file name, what it is, the restore steps)."""
+    url = make_url(url_text)
+    if url.get_backend_name() == 'postgresql':
+        _dump_postgres(url, folder / 'database.dump')
+        steps = PG_STEPS.format(host=url.host or 'localhost', port=url.port or 5432, user=url.username or 'postgres',
+                                db=url.database)
+        return 'database.dump', f'PostgreSQL "{url.database}", pg_dump custom format', steps
+    if url.get_backend_name() == 'sqlite':
+        _copy_sqlite(url, folder / 'database.sqlite3')
+        return 'database.sqlite3', 'SQLite file', SQLITE_STEPS.format(path=Path(url.database).resolve())
+    raise BackupError(f'Backups of {url.get_backend_name()} databases are not supported.')
+
+
+def _backup_company(url: str, media: Path, folder: Path, stamp: datetime, exclude: set[str]) -> dict:
+    folder.mkdir(parents=True, exist_ok=True)
+    db_file, kind, steps = _backup_database(url, folder)
+    files = _zip_media(media, folder / 'media.zip', exclude)
+    (folder / 'RESTORE.txt').write_text(RESTORE_NOTES.format(
+        stamp=f'{stamp:%d %b %Y %H:%M}', db_file=db_file, db_kind=kind, files=files,
+        media_root=media.resolve(), db_steps=steps), encoding='utf-8')
+    return {'database': db_file, 'media_files': files}
+
+
 def backup(keep: Optional[int] = None) -> dict:
-    """Writes BACKUP_DIR/<YYYY-MM-DD_HHMMSS>/ with database.dump (or .sqlite3), media.zip and RESTORE.txt.
+    """Writes BACKUP_DIR/<YYYY-MM-DD_HHMMSS>/ with database.dump (or .sqlite3), media.zip and RESTORE.txt of
+    the main company, and the same for every other company under companies/<key>/.
     keep: delete all but the newest `keep` backups afterwards."""
+    from ..database import DEFAULT_COMPANY, active_company_keys, company_url
+
     settings = get_settings()
-    url = make_url(settings.database_url)
     stamp = datetime.now()  # local time - the folder name is what people look for
     folder = Path(settings.backup_dir) / f'{stamp:%Y-%m-%d_%H%M%S}'
     n = 1
     while folder.exists():  # two backups within the same second
         n += 1
         folder = Path(settings.backup_dir) / f'{stamp:%Y-%m-%d_%H%M%S}_{n}'
-    folder.mkdir(parents=True)
+    keys = active_company_keys()
+    others = [k for k in keys if k != DEFAULT_COMPANY]
+    media = Path(settings.media_root)
+    companies = {}
     try:
-        if url.get_backend_name() == 'postgresql':
-            db_file = 'database.dump'
-            _dump_postgres(url, folder / db_file)
-            steps = PG_STEPS.format(host=url.host or 'localhost', port=url.port or 5432, user=url.username or 'postgres',
-                                    db=url.database)
-            kind = f'PostgreSQL "{url.database}", pg_dump custom format'
-        elif url.get_backend_name() == 'sqlite':
-            db_file = 'database.sqlite3'
-            _copy_sqlite(url, folder / db_file)
-            steps = SQLITE_STEPS.format(path=Path(url.database).resolve())
-            kind = 'SQLite file'
-        else:
-            raise BackupError(f'Backups of {url.get_backend_name()} databases are not supported.')
-        files = _zip_media(Path(settings.media_root), folder / 'media.zip')
+        # The main company's uploads are MEDIA_ROOT itself, minus the other companies' folders in it.
+        companies[DEFAULT_COMPANY] = _backup_company(settings.database_url, media, folder, stamp, set(others))
+        for key in others:
+            companies[key] = _backup_company(company_url(key), media / key, folder / 'companies' / key, stamp, set())
     except Exception:
         shutil.rmtree(folder, ignore_errors=True)
         raise
-    (folder / 'RESTORE.txt').write_text(RESTORE_NOTES.format(
-        stamp=f'{stamp:%d %b %Y %H:%M}', db_file=db_file, db_kind=kind, files=files,
-        media_root=Path(settings.media_root).resolve(), db_steps=steps), encoding='utf-8')
 
     removed = []
     if keep:
@@ -136,5 +156,7 @@ def backup(keep: Optional[int] = None) -> dict:
         for old in backups[:-keep]:
             shutil.rmtree(old)
             removed.append(old.name)
-    size = sum(p.stat().st_size for p in folder.iterdir())
-    return {'folder': str(folder.resolve()), 'database': db_file, 'media_files': files, 'bytes': size, 'removed': removed}
+    size = sum(p.stat().st_size for p in folder.rglob('*') if p.is_file())
+    main = companies[DEFAULT_COMPANY]
+    return {'folder': str(folder.resolve()), 'database': main['database'], 'media_files': main['media_files'],
+            'companies': companies, 'bytes': size, 'removed': removed}

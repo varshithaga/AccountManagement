@@ -6,10 +6,10 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from .access import CREATE, EDIT, METHOD_ACTIONS, user_actions, user_pages
-from .database import get_db
+from .database import DEFAULT_COMPANY, get_db
 from .errors import APIError
 from .models import User
-from .security import TokenError, decode_token
+from .security import TokenError, decode_token, token_company
 from .services.audit import set_actor
 
 _bearer = HTTPBearer(auto_error=False)
@@ -26,6 +26,10 @@ def get_current_user(
     except TokenError as exc:
         raise APIError(401, {"detail": "Given token not valid for any token type",
                              "code": "token_not_valid", "messages": [{"message": str(exc)}]})
+    # User ids repeat across company databases: a token is only good for the company it was issued in.
+    if token_company(payload) != db.info.get("company", DEFAULT_COMPANY):
+        raise APIError(401, {"detail": "This sign-in is for another company - sign in again.",
+                             "code": "wrong_company"})
     user = db.get(User, payload.get("user_id"))
     if user is None or not user.is_active:
         raise APIError(401, {"detail": "User not found", "code": "user_not_found"})

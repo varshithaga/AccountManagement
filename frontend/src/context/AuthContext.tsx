@@ -16,6 +16,8 @@ export interface AuthUser {
   /** What the role may change on each page; a page that's missing is view only. */
   actions: RoleActions
   date_joined: string
+  /** The company signed in to - each one's books are separate. */
+  company?: { key: string; name: string }
 }
 
 interface RegisterPayload {

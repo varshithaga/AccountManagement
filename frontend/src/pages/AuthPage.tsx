@@ -1,8 +1,10 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
-  Eye, EyeOff, Lock, User, Mail, IdCard, CheckCircle2, ArrowRight, BarChart3, Tag, FileSearch, Copy,
+  Eye, EyeOff, Lock, User, Mail, IdCard, CheckCircle2, ArrowRight, BarChart3, Tag, FileSearch, Copy, Building2,
 } from 'lucide-react'
+import api from '../api/client'
+import { DEFAULT_COMPANY, companyStore, type CompanyOption } from '../access/company'
 import { useAuth } from '../context/AuthContext'
 import { Spinner, Tabs } from '../components/tw'
 
@@ -56,6 +58,23 @@ export default function AuthPage({ initialMode }: AuthPageProps) {
   const { login, register } = useAuth()
   const navigate = useNavigate()
 
+  // Several companies on this server: pick which one's books to sign in to (none shown with just one).
+  const [companies, setCompanies] = useState<CompanyOption[]>([])
+  const [company, setCompany] = useState(companyStore.get())
+  useEffect(() => {
+    api.get('/companies/')
+      .then(({ data }) => {
+        const list: CompanyOption[] = data.companies ?? []
+        setCompanies(list)
+        if (!list.some((c) => c.key === companyStore.get())) setCompany(DEFAULT_COMPANY)
+      })
+      .catch(() => setCompanies([]))
+  }, [])
+  const chooseCompany = (key: string) => {
+    setCompany(key)
+    companyStore.set(key)
+  }
+
   const handleModeChange = (next: 'login' | 'signup') => {
     setMode(next)
     setError('')
@@ -66,6 +85,7 @@ export default function AuthPage({ initialMode }: AuthPageProps) {
     e.preventDefault()
     setError('')
     setSuccess('')
+    companyStore.set(company) // the sign-in request and everything after it go to this company
 
     if (mode === 'login') {
       if (!username.trim() || !password) {
@@ -224,6 +244,19 @@ export default function AuthPage({ initialMode }: AuthPageProps) {
           )}
 
           <form onSubmit={handleSubmit} noValidate className="mt-5 flex flex-col gap-4">
+            {companies.length > 1 && (
+              <Field id="auth-company" label="Company" icon={<Building2 className="h-full w-full" />}>
+                <select
+                  id="auth-company"
+                  value={company}
+                  onChange={(e) => chooseCompany(e.target.value)}
+                  className={`${inputClass} appearance-none`}
+                >
+                  {companies.map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}
+                </select>
+              </Field>
+            )}
+
             {mode === 'signup' && (
               <Field id="auth-fullname" label="Full name" icon={<IdCard className="h-full w-full" />}>
                 <input

@@ -69,7 +69,7 @@ def upgrade() -> None:
     sa.Column('status', sa.Enum('DRAFT', 'POSTED', 'PARTIALLY_PAID', 'PAID', 'CANCELLED', name='documentstatus', native_enum=False, length=20), nullable=False),
     sa.Column('journal_entry_id', sa.Integer(), nullable=True),
     sa.Column('created_by_id', sa.Integer(), nullable=True),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     sa.CheckConstraint("(kind = 'SALES' AND sales_invoice_id IS NOT NULL AND purchase_bill_id IS NULL) OR (kind = 'PURCHASE' AND purchase_bill_id IS NOT NULL AND sales_invoice_id IS NULL)", name='credit_note_document_matches_kind'),
     sa.ForeignKeyConstraint(['created_by_id'], ['users.id'], ondelete='SET NULL'),
     sa.ForeignKeyConstraint(['journal_entry_id'], ['journal_entries.id'], ondelete='SET NULL'),

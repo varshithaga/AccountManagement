@@ -14,8 +14,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from .. import serializers as ser
 from ..access import EDIT
-from ..config import get_settings
-from ..database import get_db
+from ..database import get_db, media_root
 from ..deps import Access
 from ..errors import APIError, bad_request, not_found
 from ..models import BankAccount, BankStatement, StatementSourceType, Transaction, TransactionStatus
@@ -32,7 +31,6 @@ from ..utils import apply_ordering, get_or_404, is_true, now, paginate, paginate
 from .common import confirm_unmatch, flag, period_guard, reconcile_guard, reject_if_statement_has_final
 
 router = APIRouter(prefix="/api", tags=["bank statements"])
-settings = get_settings()
 
 statement_access = Access("bank_statements")
 continuity_access = Access("statement_continuity", "bank_statements")
@@ -196,12 +194,13 @@ def _save_parsed_transactions(db: Session, statement: BankStatement, rows) -> No
     flag_duplicate_transactions(db, statement)
 
 
-def _store_file(content: bytes, filename: str) -> str:
-    """Saves an upload under media/bank_statements/YYYY/MM/ and returns its path relative to media/."""
+def _store_file(db: Session, content: bytes, filename: str) -> str:
+    """Saves an upload under the company's media/bank_statements/YYYY/MM/ and returns its path relative
+    to the company's media folder."""
     stamp = now()
     folder = Path("bank_statements") / f"{stamp:%Y}" / f"{stamp:%m}"
     name = Path(filename or "statement").name
-    target = settings.media_root / folder / name
+    target = media_root(db) / folder / name
     if target.exists():
         target = target.with_name(f"{target.stem}_{secrets.token_hex(4)}{target.suffix}")
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -261,7 +260,7 @@ def upload_statement(request: Request, db: Session = Depends(get_db), account: O
             raise APIError(409, {"error": [problems[0]["message"]], "requires_continuity_confirmation": True,
                                  "continuity": problems})
 
-    statement = BankStatement(account_id=bank_account.id, file_path=_store_file(content, file.filename),
+    statement = BankStatement(account_id=bank_account.id, file_path=_store_file(db, content, file.filename),
                               source_type=StatementSourceType(source_type.upper()), opening_balance=opening_balance,
                               closing_balance=closing_balance, file_hash=file_hash)
     db.add(statement)
@@ -292,7 +291,7 @@ def download_statement_file(statement_id: int, db: Session = Depends(get_db)):
     """The uploaded statement file - only to signed-in users with the Bank Statements page (there is no
     public /media URL)."""
     statement = get_or_404(db, BankStatement, statement_id, "BankStatement")
-    root = settings.media_root.resolve()
+    root = media_root(db).resolve()
     path = (root / (statement.file_path or "")).resolve()
     if not statement.file_path or not path.is_relative_to(root) or not path.is_file():
         raise not_found("The uploaded file is no longer on the server.")
@@ -343,7 +342,7 @@ def reparse_statement(statement_id: int, request: Request, body: Optional[Confir
     # Re-parsing deletes and re-creates every transaction, and with them their reconciliation matches.
     reconcile_guard(recon.guard_bank_transactions, db, db.scalars(txn_ids).all(),
                     confirm_unmatch(request, body.model_dump() if body else None))
-    path = settings.media_root / statement.file_path
+    path = media_root(db) / statement.file_path
     if not path.exists():
         raise APIError(400, {"file": ["The uploaded file is no longer on the server - upload it again."]})
     try:

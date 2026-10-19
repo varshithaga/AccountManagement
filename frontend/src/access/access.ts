@@ -1,5 +1,6 @@
 import { jwtDecode } from 'jwt-decode';
 import axios from 'axios';
+import { COMPANY_HEADER, companyStore } from './company';
 
 // Global type declaration for API_URL
 declare const __API_URL__: string;
@@ -60,6 +61,12 @@ const redirectToLogin = (): void => {
 // Endpoints where a 401 is an expected outcome (bad credentials, no session
 // yet) rather than a sign that an existing session has expired.
 const AUTH_ENDPOINTS_EXCLUDED_FROM_REDIRECT = ['/login/', '/register/', '/token/refresh/', '/auth/token/refresh/'];
+
+// Every request made with a plain `axios` import goes to the company being worked in.
+axios.interceptors.request.use((config) => {
+    config.headers.set(COMPANY_HEADER, companyStore.get());
+    return config;
+});
 
 // Global safety net: any request made with a plain `axios` import (used
 // throughout this app's api modules) that comes back 401 means the session
@@ -170,6 +177,7 @@ const refreshAccessToken = async (refresh_token: string | null): Promise<string>
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
+            [COMPANY_HEADER]: companyStore.get(),
         },
         body: JSON.stringify({
             refresh: refresh_token,

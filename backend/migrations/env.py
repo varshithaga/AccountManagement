@@ -8,7 +8,9 @@ from app.config import get_settings
 from app.models import Base
 
 config = context.config
-config.set_main_option("sqlalchemy.url", get_settings().database_url.replace("%", "%%"))
+# A company database is migrated by passing its URL (app.database.migrate(url)); else DATABASE_URL.
+config.set_main_option("sqlalchemy.url",
+                       (config.attributes.get("database_url") or get_settings().database_url).replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

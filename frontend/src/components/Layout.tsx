@@ -232,6 +232,9 @@ export default function Layout() {
           <div className="min-w-0 flex-1">
             <p className="truncate text-[13px] font-semibold text-white">{user?.username || 'Account'}</p>
             <p className="truncate text-xs text-sidebar-label">{roleLabel}</p>
+            {user?.company && (
+              <p className="truncate text-xs font-semibold text-highlight" title="Company - sign out to switch">{user.company.name}</p>
+            )}
           </div>
         </NavLink>
         <button

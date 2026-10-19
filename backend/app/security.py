@@ -64,10 +64,11 @@ class TokenError(Exception):
     pass
 
 
-def _encode(user_id: int, token_type: str, lifetime: timedelta) -> str:
+def _encode(user_id: int, company: str, token_type: str, lifetime: timedelta) -> str:
     now = datetime.now(timezone.utc)
     payload = {
         "user_id": user_id,
+        "company": company,
         "token_type": token_type,
         "jti": uuid.uuid4().hex,
         "iat": int(now.timestamp()),
@@ -76,10 +77,16 @@ def _encode(user_id: int, token_type: str, lifetime: timedelta) -> str:
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
 
-def create_token_pair(user: User) -> dict:
+def token_company(payload: dict) -> str:
+    # Tokens issued before there were several companies carry none - they belong to "default".
+    return payload.get("company") or "default"
+
+
+def create_token_pair(user: User, company: str) -> dict:
+    """Tokens for a user of `company` - only accepted on requests to that company."""
     return {
-        "access": _encode(user.id, "access", timedelta(minutes=settings.access_token_minutes)),
-        "refresh": _encode(user.id, "refresh", timedelta(days=settings.refresh_token_days)),
+        "access": _encode(user.id, company, "access", timedelta(minutes=settings.access_token_minutes)),
+        "refresh": _encode(user.id, company, "refresh", timedelta(days=settings.refresh_token_days)),
     }
 
 
@@ -109,6 +116,9 @@ def is_revoked(db: Session, payload: dict) -> bool:
 def rotate_refresh_token(db: Session, refresh: str) -> dict:
     """Validates a refresh token, revokes it, and returns a new access + refresh pair."""
     payload = decode_token(refresh, "refresh")
+    company = db.info.get("company", "default")
+    if token_company(payload) != company:
+        raise TokenError("Token is for another company")
     if is_revoked(db, payload):
         raise TokenError("Token is blacklisted")
     user = db.get(User, payload["user_id"])
@@ -116,7 +126,7 @@ def rotate_refresh_token(db: Session, refresh: str) -> dict:
         raise TokenError("User not found")
     revoke(db, payload)
     db.commit()
-    return create_token_pair(user)
+    return create_token_pair(user, company)
 
 
 # ---------------------------------------------------------------------------

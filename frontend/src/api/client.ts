@@ -1,5 +1,6 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios'
 import { getAccessTokenIfSignedIn, refreshSession } from '../access/access'
+import { COMPANY_HEADER, companyStore } from '../access/company'
 
 interface RetryableConfig extends InternalAxiosRequestConfig {
   _retry?: boolean
@@ -31,9 +32,10 @@ const api = axios.create({ baseURL: API_BASE })
 // access/access.ts - two refreshes with one (single-use) refresh token would sign the user out.
 // Signing in / up needs no token - and a stale one left in storage must not get in the way.
 // Logout authenticates with the refresh token in its body, not the access token.
-const PUBLIC_PATHS = ['/auth/token/', '/auth/register/', '/auth/logout/']
+const PUBLIC_PATHS = ['/auth/token/', '/auth/register/', '/auth/logout/', '/companies/']
 
 api.interceptors.request.use(async (config) => {
+  config.headers.set(COMPANY_HEADER, companyStore.get())
   if (PUBLIC_PATHS.includes(config.url || '')) return config
   const token = await getAccessTokenIfSignedIn()
   if (token) config.headers.Authorization = `Bearer ${token}`

@@ -1,8 +1,11 @@
 """Scheduled recurring runs, backups and the audit log of the newer records."""
+import os
 import sqlite3
 import zipfile
 from contextlib import closing
 from pathlib import Path
+
+import pytest
 
 from app.database import SessionLocal
 from app.services import backup as backup_service
@@ -33,6 +36,7 @@ def test_scheduled_recurring_run(admin):
     assert any(r["action"] == "GENERATE" and r["username"] == "scheduler" for r in runs)
 
 
+@pytest.mark.skipif(not os.environ["DATABASE_URL"].startswith("sqlite"), reason="copies the SQLite test database")
 def test_backup_sqlite(admin, tmp_path, monkeypatch):
     admin.post("/api/clients/", json={"name": "Backed Up Ltd"})
     settings = backup_service.get_settings()

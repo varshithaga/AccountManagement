@@ -104,7 +104,8 @@ def due_count(db: Session, as_of: Optional[date] = None) -> int:
 def run_scheduled(db: Session, as_of: Optional[date] = None) -> Optional[dict]:
     """One scheduled run of every due template, committed. Returns None when another process is
     already running it (PostgreSQL only - SQLite has a single writer anyway)."""
-    if db.get_bind().dialect.name == 'postgresql' and             not db.scalar(text('SELECT pg_try_advisory_xact_lock(:key)'), {'key': RUN_LOCK_KEY}):
+    postgres = db.get_bind().dialect.name == 'postgresql'
+    if postgres and not db.scalar(text('SELECT pg_try_advisory_xact_lock(:key)'), {'key': RUN_LOCK_KEY}):
         db.rollback()
         return None
     result = generate_due(db, as_of)

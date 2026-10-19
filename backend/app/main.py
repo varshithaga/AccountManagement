@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .database import SessionLocal
+from .database import active_company_keys, company_session
 from .errors import register_error_handlers
 from .routers import (
     audit, auth, billing, communication, dashboard, inventory, journal, masters, parties, period_close,
@@ -22,10 +22,17 @@ log = logging.getLogger("ledgerdesk")
 
 
 def _run_recurring() -> None:
-    with SessionLocal() as db:
-        result = run_scheduled(db)
-    if result and (result["invoices_created"] or result["errors"]):
-        log.info("Recurring invoices: %s created, %s failed", result["invoices_created"], len(result["errors"]))
+    """One run in every company; one company's failure doesn't stop the others."""
+    for key in active_company_keys():
+        try:
+            with company_session(key) as db:
+                result = run_scheduled(db)
+        except Exception:
+            log.exception("Recurring invoice run failed for company %s", key)
+            continue
+        if result and (result["invoices_created"] or result["errors"]):
+            log.info("Recurring invoices (%s): %s created, %s failed", key, result["invoices_created"],
+                     len(result["errors"]))
 
 
 async def _recurring_loop(minutes: int) -> None:
@@ -41,9 +48,12 @@ async def _recurring_loop(minutes: int) -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     # The schema is managed by Alembic (python cli.py migrate) - the app never creates tables itself.
-    with SessionLocal() as db:
-        ensure_default_roles(db)
-    task = asyncio.create_task(_recurring_loop(settings.recurring_check_minutes))         if settings.recurring_check_minutes > 0 else None
+    for key in active_company_keys():
+        with company_session(key) as db:
+            ensure_default_roles(db)
+    task = None
+    if settings.recurring_check_minutes > 0:
+        task = asyncio.create_task(_recurring_loop(settings.recurring_check_minutes))
     yield
     if task:
         task.cancel()
@@ -66,6 +76,7 @@ register_error_handlers(app)
 for module in (auth, users, masters, statements, transactions, journal, parties, billing, reconciliation,
                reports, period_close, dashboard, audit, inventory, recurring, communication):
     app.include_router(module.router)
+app.include_router(auth.companies_router)
 
 # Uploaded files are not served publicly - statements download through /api/bank-statements/<id>/file/.
 settings.media_root.mkdir(parents=True, exist_ok=True)

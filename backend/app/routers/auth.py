@@ -4,19 +4,21 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import serializers as ser
-from ..database import get_db
+from ..database import DEFAULT_COMPANY, get_db
 from ..deps import get_current_user
 from ..errors import APIError, bad_request
 from ..models import Role, User
 from ..schemas import ChangePasswordIn, LoginIn, ProfileIn, RefreshIn, RegisterIn
 from ..security import (
     TokenError, check_password, create_token_pair, decode_token, hash_password, password_errors, rate_limited,
-    revoke, rotate_refresh_token,
+    revoke, rotate_refresh_token, token_company,
 )
 from ..services import audit
+from ..services.companies import list_companies
 from ..utils import now
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+companies_router = APIRouter(prefix="/api/companies", tags=["auth"])
 
 
 def _throttle(request: Request) -> None:
@@ -37,7 +39,7 @@ def login(body: LoginIn, request: Request, db: Session = Depends(get_db)):
     user.last_login = now()
     audit.record(db, "LOGIN", "User", label=user.username, entity_id=user.id, user=user)
     db.commit()
-    return create_token_pair(user)
+    return create_token_pair(user, db.info["company"])
 
 
 @router.post("/token/refresh/")
@@ -77,7 +79,7 @@ def register(body: RegisterIn, request: Request, db: Session = Depends(get_db)):
     db.info["actor"] = (None, username)  # logged as signing themselves up
     db.add(user)
     db.commit()
-    tokens = create_token_pair(user)
+    tokens = create_token_pair(user, db.info["company"])
     return {
         "message": "Account created successfully!",
         **tokens,
@@ -92,17 +94,28 @@ def logout(body: RefreshIn, db: Session = Depends(get_db)):
     if not body.refresh:
         raise bad_request("refresh token is required.")
     try:
-        revoke(db, decode_token(body.refresh, "refresh"))
-        db.commit()
+        payload = decode_token(body.refresh, "refresh")
+        if token_company(payload) == db.info["company"]:
+            revoke(db, payload)
+            db.commit()
     except TokenError:
         pass  # already invalid / expired - logout still succeeds
     return Response(status_code=205)
 
 
 @router.get("/me/")
-def me(user: User = Depends(get_current_user)):
-    """The signed-in user, their role and the pages it opens."""
-    return ser.current_user(user)
+def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """The signed-in user, their role and the pages it opens, and the company they are signed in to."""
+    key = db.info["company"]
+    name = next((c["name"] for c in list_companies() if c["key"] == key), key)
+    return {**ser.current_user(user), "company": {"key": key, "name": name}}
+
+
+@companies_router.get("/")
+def companies():
+    """The companies one can sign in to, for the sign-in page (public - names only). With just one,
+    the page shows no choice."""
+    return {"companies": list_companies(), "default": DEFAULT_COMPANY}
 
 
 @router.patch("/me/")
@@ -111,7 +124,7 @@ def update_me(body: ProfileIn, user: User = Depends(get_current_user), db: Sessi
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(user, field, value or "")
     db.commit()
-    return ser.current_user(user)
+    return me(user, db)
 
 
 @router.post("/change-password/")
