@@ -8,8 +8,9 @@ export type PageKey =
   | 'bank_statements' | 'statement_continuity' | 'transactions' | 'journal_entries' | 'bank_reconciliation'
   | 'period_close'
   | 'clients' | 'suppliers' | 'products' | 'sales_invoices' | 'purchase_bills' | 'payments' | 'receivables_payables'
+  | 'recurring_invoices' | 'inventory'
   | 'profit_and_loss' | 'balance_sheet' | 'cash_flow' | 'trial_balance' | 'account_ledger' | 'reports_comparison'
-  | 'gst_summary'
+  | 'gst_summary' | 'tds_summary'
   | 'user_management' | 'audit_log'
 
 export interface PageDef {
@@ -56,6 +57,8 @@ export const PAGE_GROUPS: { title: string; pages: PageDef[] }[] = [
       { key: 'sales_invoices', label: 'Sales Invoices', path: '/sales-invoices' },
       { key: 'purchase_bills', label: 'Purchase Bills', path: '/purchase-bills' },
       { key: 'payments', label: 'Payments & Receipts', path: '/payments' },
+      { key: 'recurring_invoices', label: 'Recurring Invoices', path: '/recurring-invoices' },
+      { key: 'inventory', label: 'Inventory', path: '/inventory' },
       { key: 'receivables_payables', label: 'Receivables & Payables', path: '/receivables-payables' },
     ],
   },
@@ -69,6 +72,7 @@ export const PAGE_GROUPS: { title: string; pages: PageDef[] }[] = [
       { key: 'account_ledger', label: 'Account Ledger', path: '/account-ledger' },
       { key: 'reports_comparison', label: 'Period Comparison', path: '/reports/comparison' },
       { key: 'gst_summary', label: 'GST Summary', path: '/gst-summary' },
+      { key: 'tds_summary', label: 'TDS Summary', path: '/tds-summary' },
     ],
   },
   {
@@ -105,6 +109,8 @@ export const PAGE_ACTIONS: Partial<Record<PageKey, PageAction[]>> = {
   sales_invoices: ALL_ACTIONS, // edit also covers posting and cancelling
   purchase_bills: ALL_ACTIONS,
   payments: ALL_ACTIONS,
+  recurring_invoices: ALL_ACTIONS,
+  inventory: ['create', 'delete'], // stock adjustments
   bank_reconciliation: ['edit'], // matching and sign-off change existing items
   period_close: ['edit'], // closing / reopening the books and the financial-year setting
   user_management: ALL_ACTIONS,

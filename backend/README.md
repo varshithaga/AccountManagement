@@ -37,6 +37,18 @@ The first account registered through `POST /api/auth/register/` becomes the admi
 (or create one with `python cli.py create-admin <username>`). Later sign-ups have no page
 access until an administrator gives them a role.
 
+## Running it day to day
+
+- **Recurring invoices** are raised by the server itself every `RECURRING_CHECK_MINUTES` (default 60; at
+  start-up too). With it set to 0, run `python cli.py run-recurring` from Task Scheduler / cron instead.
+  Several server processes are fine - on PostgreSQL only one of them runs it at a time.
+- **Backups**: `python cli.py backup --keep 14` writes `BACKUP_DIR/<date_time>/` with the database
+  (`pg_dump`, custom format), `media.zip` (uploaded statements) and a `RESTORE.txt` with the exact restore
+  steps for that backup. Schedule it daily. If `pg_dump` is not on PATH, set `PG_BIN_DIR` in `.env`. Copy
+  the backup folder off the machine - a backup on the same disk doesn't survive the disk.
+- **Uploaded files** are not served publicly: a statement downloads through
+  `GET /api/bank-statements/{id}/file/`, which needs a login with the Bank Statements page.
+
 Tests: `pytest tests` (a temporary SQLite file; set `TEST_DATABASE_URL` to a throwaway PostgreSQL database to
 run them there - every test drops and recreates the tables).
 

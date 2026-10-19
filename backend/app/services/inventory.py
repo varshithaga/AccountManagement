@@ -89,7 +89,7 @@ def adjust(db: Session, product: Product, quantity: Decimal, day: date, user: Op
     except period_close.PeriodClosedError as exc:
         raise InventoryError(str(exc))
     movement = StockMovement(
-        product_id=product.id, date=day, quantity=quantity, note=(note or '').strip()[:500],
+        product=product, date=day, quantity=quantity, note=(note or '').strip()[:500],
         kind=StockMovementKind.OPENING if opening else StockMovementKind.ADJUSTMENT,
         unit_cost=q2(Decimal(str(unit_cost))) if unit_cost is not None and quantity > 0 else None,
         created_by_id=user.id if user else None)

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Contact, Truck, Plus, Pencil, Trash2, RefreshCw, FileText, Wallet, CheckCircle2, Download } from 'lucide-react'
+import { Contact, Truck, Plus, Pencil, Trash2, RefreshCw, FileText, Wallet, CheckCircle2, Download, FileSpreadsheet } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import Pagination, { DEFAULT_ROWS_PER_PAGE } from '../../components/Pagination'
 import { Alert, Button, DateField, Drawer, IconButton, Modal, Panel, Select, Spinner, Switch, Tabs, TextField } from '../../components/tw'
@@ -7,8 +7,9 @@ import { stateFromGstin, stateOptions } from '../../constants/indianStates'
 import { EmptyState, KpiTile, PageHeader, RowAction, SearchBox } from '../../components/PageParts'
 import { formatMoney } from '../../utils/periods'
 import { exportToExcel } from '../../utils/excelExport'
-import { errorText, partiesApi } from './billingapi'
-import type { Party, PartyKind, PartyStatement } from './billingapi'
+import { errorText, partiesApi, tdsSectionsApi } from './billingapi'
+import type { Party, PartyKind, PartyStatement, TdsSection } from './billingapi'
+import BillingImportDialog from './BillingImportDialog'
 import { AccountSelect, Field, TABLE_HEAD_ROW, TABLE_ROW, TD, TH, formatDate } from './billingParts'
 
 type ActiveFilter = 'all' | 'active' | 'inactive'
@@ -28,12 +29,13 @@ interface FormState {
   address: string
   shipping_address: string
   account: number | null
+  tds_section: number | null
   is_active: boolean
 }
 
 const EMPTY: FormState = {
   name: '', code: '', contact_person: '', email: '', phone: '', gstin: '', pan: '', state: '',
-  payment_terms_days: '30', opening_balance: '0', opening_balance_date: '', address: '', shipping_address: '', account: null, is_active: true,
+  payment_terms_days: '30', opening_balance: '0', opening_balance_date: '', address: '', shipping_address: '', account: null, tds_section: null, is_active: true,
 }
 
 const TEXT = {
@@ -72,6 +74,12 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
   const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
   const [statementFor, setStatementFor] = useState<Party | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [sections, setSections] = useState<TdsSection[]>([])
+
+  useEffect(() => {
+    if (kind === 'suppliers') tdsSectionsApi.list().then(setSections).catch(() => setSections([]))
+  }, [kind])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -114,7 +122,8 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
       gstin: p.gstin ?? '', pan: p.pan, state: p.state, payment_terms_days: String(p.payment_terms_days),
       opening_balance: p.opening_balance, opening_balance_date: p.opening_balance_date ?? '', address: (kind === 'clients' ? p.billing_address : p.address) ?? '',
       shipping_address: p.shipping_address ?? '',
-      account: (kind === 'clients' ? p.receivable_account : p.payable_account) ?? null, is_active: p.is_active,
+      account: (kind === 'clients' ? p.receivable_account : p.payable_account) ?? null, tds_section: p.tds_section ?? null,
+      is_active: p.is_active,
     })
     setFormError('')
     setDialog(true)
@@ -139,6 +148,7 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
     } else {
       payload.address = form.address
       payload.payable_account = form.account
+      payload.tds_section = form.tds_section
     }
     setSaving(true)
     setFormError('')
@@ -192,6 +202,7 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
         description={text.description}
         actions={
           <>
+            {canCreate && <Button variant="outlined" icon={<FileSpreadsheet />} onClick={() => setImporting(true)}>Import from Excel</Button>}
             <Button variant="outlined" icon={<Download />} onClick={exportExcel}>Export</Button>
             <IconButton title="Refresh" onClick={load} disabled={loading}>
               <RefreshCw className={`h-[18px] w-[18px] stroke-[1.8] ${loading ? 'animate-spin' : ''}`} />
@@ -333,8 +344,24 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
             onChange={(id) => setForm({ ...form, account: id })} />
           <p className="mt-1.5 text-xs text-muted">{text.accountHint}</p>
         </div>
+        {kind === 'suppliers' && (
+          <div>
+            <Select id="p-tds" label="Default TDS section" value={form.tds_section ?? ''}
+              onChange={(e) => setForm({ ...form, tds_section: e.target.value ? Number(e.target.value) : null })}>
+              <option value="">No TDS</option>
+              {sections.filter((t) => t.is_active || t.id === form.tds_section).map((t) => (
+                <option key={t.id} value={t.id}>{t.code} · {t.name} ({Number(t.rate)}%)</option>
+              ))}
+            </Select>
+            <p className="mt-1.5 text-xs text-muted">
+              Picked on their new bills, which then keep back the TDS. Sections are set up under Products &amp; Tax Rates → TDS sections.
+            </p>
+          </div>
+        )}
         <Switch checked={form.is_active} onChange={(v) => setForm({ ...form, is_active: v })} label="Active" />
       </Modal>
+
+      <BillingImportDialog target={kind} open={importing} onClose={() => setImporting(false)} onImported={load} />
 
       {statementFor && <StatementDrawer kind={kind} party={statementFor} onClose={() => setStatementFor(null)} />}
     </div>

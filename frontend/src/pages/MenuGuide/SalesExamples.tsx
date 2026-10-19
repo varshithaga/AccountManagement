@@ -1,4 +1,4 @@
-/** Menu Guide examples for Sales & Purchases, GST Summary and the Audit Log. */
+/** Menu Guide examples for Sales & Purchases, GST / TDS Summary and the Audit Log. */
 import type { ReactNode } from 'react'
 
 function HowItWorks({ tone = 'primary', children }: { tone?: 'primary' | 'success' | 'info' | 'warning'; children: ReactNode }) {
@@ -97,6 +97,52 @@ export default function SalesExamples({ id }: { id: string }) {
             { account: 'Office Supplies', dr: '₹5,000.00' },
             { account: 'GST Input Credit (CGST + SGST)', dr: '₹900.00' },
             { account: 'Accounts Payable', cr: '₹5,900.00' },
+          ]} />
+          <div className="p-3 rounded-xl bg-surface-muted text-ink">With TDS 194J @ 10% on a ₹50,000 professional fee (+ ₹9,000 GST), the supplier is owed ₹54,000 and ₹5,000 goes to TDS Payable:</div>
+          <Entry title="PB-9-LF-21 • Purchase bill LF-21 - Rao & Associates" lines={[
+            { account: 'Professional Fees', dr: '₹50,000.00' },
+            { account: 'GST Input Credit (CGST + SGST)', dr: '₹9,000.00' },
+            { account: 'Accounts Payable', cr: '₹54,000.00' },
+            { account: 'TDS Payable (194J @ 10%)', cr: '₹5,000.00' },
+          ]} />
+        </div>
+      )
+    case 'recurring_invoices':
+      return (
+        <div className="space-y-4 text-xs">
+          <HowItWorks tone="info">Set it up once; every due date raises one invoice on its own day. Missed months are caught up when the server comes back.</HowItWorks>
+          <Rows rows={[
+            ['Office rent - Acme Retail', 'Every month from 31 Jan 2026'],
+            ['Lines', 'Rent ₹50,000 + GST 18%'],
+            ['Invoices', 'Posted straight away'],
+            ['Raised so far', '31 Jan · 28 Feb · 31 Mar · 30 Apr'],
+            ['Next invoice', '31 May 2026'],
+          ]} />
+        </div>
+      )
+    case 'inventory':
+      return (
+        <div className="space-y-4 text-xs">
+          <HowItWorks tone="warning">Posting moves the stock; cancelling the document moves it back. Value is at the average cost of what came in.</HowItWorks>
+          <Rows rows={[
+            ['01 Apr · Opening stock @ ₹40', '+100 → 100'],
+            ['05 Apr · Bill PB-118 @ ₹46', '+50 → 150'],
+            ['12 Apr · Invoice INV-00061', '−120 → 30'],
+            ['15 Apr · Credit note CN-00004 (return)', '+5 → 35'],
+            ['On hand · average cost ₹42 · value', '35 Nos · ₹1,470.00 · Low (reorder at 40)'],
+          ]} />
+        </div>
+      )
+    case 'tds_summary':
+      return (
+        <div className="space-y-4 text-xs">
+          <HowItWorks tone="success">TDS kept back on posted bills, per section and per supplier with PAN - and what you still owe the government.</HowItWorks>
+          <Rows rows={[
+            ['194C Contractors @ 2% · 6 bills', 'Taxable ₹3,20,000 · TDS ₹6,400'],
+            ['194J Professional fees @ 10% · 2 bills', 'Taxable ₹90,000 · TDS ₹9,000'],
+            ['Kept back in the quarter', '₹15,400.00'],
+            ['Paid to the government (Dr TDS Payable / Cr Bank)', '₹9,800.00'],
+            ['Still to pay', '₹5,600.00'],
           ]} />
         </div>
       )

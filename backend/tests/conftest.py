@@ -9,6 +9,7 @@ _tmp = Path(tempfile.mkdtemp(prefix="accounting-tests-"))
 os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL") or f"sqlite:///{(_tmp / 'test.db').as_posix()}"
 os.environ["MEDIA_ROOT"] = str(_tmp / "media")
 os.environ["AUTH_RATE_LIMIT_PER_MINUTE"] = "1000"
+os.environ["RECURRING_CHECK_MINUTES"] = "0"  # no background runs - tests call them directly
 os.environ.setdefault("SECRET_KEY", "test-secret-key-that-is-long-enough-for-hs256-signing")
 
 import pytest  # noqa: E402

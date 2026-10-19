@@ -41,6 +41,8 @@ class Settings(BaseSettings):
 
     # Where `python cli.py backup` writes backups (default: backend/backups)
     backup_dir: Path = BASE_DIR / "backups"
+    # Folder with pg_dump / pg_restore when they are not on PATH, e.g. "C:/Program Files/PostgreSQL/18/bin"
+    pg_bin_dir: str = ""
 
     @field_validator("secret_key")
     @classmethod

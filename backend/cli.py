@@ -6,6 +6,10 @@
     python cli.py create-admin <username>     create a superuser (asks for the password)
     python cli.py seed                        add the starter Chart of Accounts, GST rates, sample bank accounts
                                               and the standard BAI codes (only adds what is missing)
+    python cli.py run-recurring               raise every recurring invoice that has fallen due (the server also
+                                              does this every RECURRING_CHECK_MINUTES)
+    python cli.py backup [--keep N]           back up the database and uploaded files to BACKUP_DIR (keep the
+                                              newest N backups); each backup has a RESTORE.txt
 """
 import getpass
 import sys
@@ -30,6 +34,11 @@ def main(argv: list[str]) -> int:
         make_migration(argv[1])
         print("Review the new file in migrations/versions/, then run: python cli.py migrate")
         return 0
+    # These two never migrate first: a backup is what you take before migrating.
+    if command == "backup":
+        return _backup(argv[1:])
+    if command == "run-recurring":
+        return _run_recurring()
     if command not in ("migrate", "init-db", "seed", "create-admin"):
         print(f"Unknown command: {command}\n{__doc__}")
         return 1
@@ -64,6 +73,42 @@ def main(argv: list[str]) -> int:
             db.commit()
             print(f'Administrator "{username}" created.')
     return 0
+
+
+def _backup(args: list[str]) -> int:
+    from app.services.backup import BackupError, backup
+
+    keep = None
+    if args:
+        if len(args) != 2 or args[0] != "--keep" or not args[1].isdigit() or int(args[1]) < 1:
+            print("Usage: python cli.py backup [--keep N]")
+            return 1
+        keep = int(args[1])
+    try:
+        result = backup(keep)
+    except BackupError as exc:
+        print(f"Backup failed: {exc}")
+        return 1
+    print(f"Backup written to {result['folder']}")
+    print(f"  {result['database']}, media.zip ({result['media_files']} files), {result['bytes'] / 1_048_576:.1f} MB")
+    if result["removed"]:
+        print(f"  Removed older backups: {', '.join(result['removed'])}")
+    print("  See RESTORE.txt in that folder to restore it.")
+    return 0
+
+
+def _run_recurring() -> int:
+    from app.services.recurring import run_scheduled
+
+    with SessionLocal() as db:
+        result = run_scheduled(db)
+    if result is None:
+        print("Another run is in progress (the server's scheduler) - nothing done.")
+        return 0
+    print(f"{result['invoices_created']} invoice(s) created from {result['templates']} recurring template(s).")
+    for err in result["errors"]:
+        print(f"  Failed: {err['name']} - {err['error']}")
+    return 1 if result["errors"] else 0
 
 
 if __name__ == "__main__":

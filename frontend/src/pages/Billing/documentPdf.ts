@@ -364,6 +364,11 @@ export async function downloadDocumentPdf(doc: PrintableDoc, company: Company): 
   (await render(doc, company)).save(pdfFilename(doc))
 }
 
+/** The PDF as a file - to attach to an email. */
+export async function documentPdfBlob(doc: PrintableDoc, company: Company): Promise<Blob> {
+  return (await render(doc, company)).output('blob')
+}
+
 /** Opens the PDF in a new tab with the print dialog up. Call it straight from a click (pop-up blockers). */
 export async function printDocumentPdf(doc: PrintableDoc, company: Company): Promise<void> {
   const tab = window.open('', '_blank')

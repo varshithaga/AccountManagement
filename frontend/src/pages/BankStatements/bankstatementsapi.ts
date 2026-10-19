@@ -79,6 +79,23 @@ export const bankStatementsApi = {
     return response.data
   },
 
+  /** Saves the uploaded statement file. It is only served to signed-in users, so it is fetched with the
+   * token rather than opened as a plain link. */
+  downloadFile: async (id: number | string, filename: string): Promise<void> => {
+    const response = await axios.get(createApiUrl(`/bank-statements/${id}/file/`), {
+      headers: await getAuthHeaders(),
+      responseType: 'blob',
+    })
+    const url = URL.createObjectURL(response.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  },
+
   /** A statement that doesn't follow on from its neighbours is refused with 409
    * {requires_continuity_confirmation, continuity: [...]} until resent with confirmContinuity. */
   upload: async (payload: { account: number; file: File; source_type: string; confirmContinuity?: boolean }): Promise<BankStatement> => {

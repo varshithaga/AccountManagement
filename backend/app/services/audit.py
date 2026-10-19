@@ -21,8 +21,8 @@ from sqlalchemy.orm import Session
 from ..models import (
     AccountingSettings, AuditLog, BaiCode, BankAccount, BankStatement, BookClosing, CategorizationSettings, Category,
     CategoryKeyword, Client, CreditNote, JournalEntry, JournalImportBatch, Payment, PaymentAllocation, Product,
-    PurchaseBill, ReconciliationPeriod, ReconciliationSettings, Role, SalesInvoice, SubCategory, Supplier, TaxRate,
-    User,
+    PurchaseBill, ReconciliationPeriod, ReconciliationSettings, RecurringInvoice, Role, SalesInvoice, StockMovement,
+    StockMovementKind, SubCategory, Supplier, TaxRate, TdsSection, User,
 )
 
 # Tracked models and the field that names a record in the log.
@@ -33,6 +33,7 @@ TRACKED: dict[type, Optional[str]] = {
     PurchaseBill: 'bill_number', CreditNote: 'note_number', Payment: 'payment_number', PaymentAllocation: None,
     ReconciliationPeriod: 'period_end', BookClosing: 'closed_through', AccountingSettings: None,
     CategorizationSettings: None, ReconciliationSettings: None,
+    RecurringInvoice: 'name', TdsSection: 'name', StockMovement: None,
 }
 # Never written to the log; a change to one is logged as "changed" without the values.
 SECRET_FIELDS = {'hashed_password', 'file_hash'}
@@ -75,6 +76,9 @@ def _is_tracked(obj) -> bool:
     # Only hand-made journal entries; posted documents and bank postings are logged through their document.
     if isinstance(obj, JournalEntry):
         return obj.origin == 'MANUAL'
+    # Only opening stock and adjustments; the rest follow their invoice, bill or note.
+    if isinstance(obj, StockMovement):
+        return obj.kind in (StockMovementKind.OPENING, StockMovementKind.ADJUSTMENT)
     return True
 
 
@@ -87,6 +91,9 @@ def _label(obj) -> str:
         number = getattr(doc, 'invoice_number', None) or getattr(doc, 'bill_number', None) or fallback
         payment = loaded.get('payment')
         return f'{payment.payment_number if payment else f"payment {obj.payment_id}"} → {number}'
+    if isinstance(obj, StockMovement):
+        product = loaded.get('product')
+        return f'{product.name if product else f"product {obj.product_id}"} {obj.quantity:+} ({obj.kind.value.lower()})'
     if isinstance(obj, ReconciliationPeriod):
         account = loaded.get('bank_account')
         return f'{account.name if account else f"bank account {obj.bank_account_id}"} · {obj.period_end}'

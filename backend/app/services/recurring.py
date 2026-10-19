@@ -5,20 +5,24 @@ dated on their own due day, as drafts - or posted straight away with auto_post. 
 missed several periods (the server was off) catches up, at most MAX_CATCH_UP invoices per run.
 A failure (e.g. the period is closed, an account was deleted) is kept in last_error and that
 template is skipped until it is fixed; the others carry on.
+
+The server runs it every RECURRING_CHECK_MINUTES (app/main.py); `python cli.py run-recurring` runs it once.
 """
 import calendar
 from datetime import date
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from ..models import Client, Frequency, RecurringInvoice, User
 from ..utils import today as _today
-from . import invoicing
+from . import audit, invoicing
 
 MONTHS = {Frequency.MONTHLY: 1, Frequency.QUARTERLY: 3, Frequency.HALF_YEARLY: 6, Frequency.YEARLY: 12}
 MAX_CATCH_UP = 24
+# PostgreSQL advisory lock: one scheduled run at a time across server processes and the CLI.
+RUN_LOCK_KEY = 7_316_001
 
 
 def advance(day: date, frequency: Frequency, anchor_day: int) -> date:
@@ -95,3 +99,17 @@ def due_count(db: Session, as_of: Optional[date] = None) -> int:
     return sum(1 for t in db.scalars(select(RecurringInvoice).where(RecurringInvoice.is_active.is_(True),
                                                                     RecurringInvoice.next_date <= as_of))
                if is_due(t, as_of))
+
+
+def run_scheduled(db: Session, as_of: Optional[date] = None) -> Optional[dict]:
+    """One scheduled run of every due template, committed. Returns None when another process is
+    already running it (PostgreSQL only - SQLite has a single writer anyway)."""
+    if db.get_bind().dialect.name == 'postgresql' and             not db.scalar(text('SELECT pg_try_advisory_xact_lock(:key)'), {'key': RUN_LOCK_KEY}):
+        db.rollback()
+        return None
+    result = generate_due(db, as_of)
+    if result['invoices_created'] or result['errors']:
+        audit.record(db, 'GENERATE', 'RecurringInvoice', f"{result['invoices_created']} invoices (scheduled)",
+                     changes=result, username='scheduler')
+    db.commit()
+    return result

@@ -2,6 +2,7 @@
 (model DecimalFields as "123.45" strings, foreign keys as ids plus *_name helpers)."""
 from collections import defaultdict
 from decimal import Decimal
+from pathlib import PurePosixPath
 from typing import Optional
 
 from sqlalchemy import func, select
@@ -132,14 +133,12 @@ def statement_counts(db: Session, statement_ids: list[int]) -> dict:
     return counts
 
 
-def file_url(base_url: str, path: str) -> str:
-    return f'{base_url.rstrip("/")}/media/{path}' if path else None
-
-
-def statement(s: BankStatement, counts: dict, continuity: Optional[dict], base_url: str) -> dict:
+def statement(s: BankStatement, counts: dict, continuity: Optional[dict]) -> dict:
     total = counts.get('transactions', 0)
     return {
-        'id': s.id, 'account': s.account_id, 'account_name': s.account.name, 'file': file_url(base_url, s.file_path),
+        'id': s.id, 'account': s.account_id, 'account_name': s.account.name,
+        # The file's name; download it from /api/bank-statements/<id>/file/ (signed in)
+        'file': PurePosixPath(s.file_path).name if s.file_path else None,
         'source_type': _v(s.source_type), 'opening_balance': money(s.opening_balance),
         'closing_balance': money(s.closing_balance), 'uploaded_at': iso(s.uploaded_at),
         'transaction_count': total, 'duplicate_count': counts.get('duplicates', 0),
@@ -345,7 +344,7 @@ def product(p: Product) -> dict:
         'expense_account': p.expense_account_id,
         'expense_account_name': p.expense_account.name if p.expense_account else None,
         'is_active': p.is_active, 'track_inventory': p.track_inventory,
-        'reorder_level': str(p.reorder_level.normalize()) if p.reorder_level is not None else None,
+        'reorder_level': f'{p.reorder_level.normalize():f}' if p.reorder_level is not None else None,
     }
 
 
@@ -422,7 +421,7 @@ def party_outstanding(db: Session, model, ids: list[int]) -> dict:
 def _item(i) -> dict:
     return {
         'id': i.id, 'product': i.product_id, 'product_name': i.product.name if i.product else None,
-        'description': i.description, 'quantity': str(i.quantity.normalize()) if i.quantity is not None else None,
+        'description': i.description, 'quantity': f'{i.quantity.normalize():f}' if i.quantity is not None else None,
         'unit_price': money(i.unit_price), 'discount_percent': money(i.discount_percent),
         'tax_rate': i.tax_rate_id, 'tax_rate_name': i.tax_rate.name if i.tax_rate else None,
         'tax_percent': money(i.tax_rate.rate) if i.tax_rate else None,

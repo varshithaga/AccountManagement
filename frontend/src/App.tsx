@@ -37,6 +37,9 @@ const DocumentsPage = lazy(() => import('./pages/Billing/DocumentsPage'))
 const PaymentsPage = lazy(() => import('./pages/Billing/PaymentsPage'))
 const ReceivablesPayablesPage = lazy(() => import('./pages/Billing/ReceivablesPayablesPage'))
 const GstSummaryPage = lazy(() => import('./pages/GstSummary/GstSummaryPage'))
+const TdsSummaryPage = lazy(() => import('./pages/TdsSummary/TdsSummaryPage'))
+const InventoryPage = lazy(() => import('./pages/Inventory/InventoryPage'))
+const RecurringInvoicesPage = lazy(() => import('./pages/Billing/RecurringInvoicesPage'))
 const AuditLogPage = lazy(() => import('./pages/AuditLog/AuditLogPage'))
 
 export default function App() {
@@ -74,6 +77,8 @@ export default function App() {
             <Route path="/sales-invoices" element={<RequirePage page="sales_invoices"><DocumentsPage key="sales" kind="sales" /></RequirePage>} />
             <Route path="/purchase-bills" element={<RequirePage page="purchase_bills"><DocumentsPage key="purchase" kind="purchase" /></RequirePage>} />
             <Route path="/payments" element={<RequirePage page="payments"><PaymentsPage /></RequirePage>} />
+            <Route path="/recurring-invoices" element={<RequirePage page="recurring_invoices"><RecurringInvoicesPage /></RequirePage>} />
+            <Route path="/inventory" element={<RequirePage page="inventory"><InventoryPage /></RequirePage>} />
             <Route path="/receivables-payables" element={<RequirePage page="receivables_payables"><ReceivablesPayablesPage /></RequirePage>} />
             <Route path="/cash-flow" element={<RequirePage page="cash_flow"><CashFlowPage /></RequirePage>} />
             <Route path="/account-ledger" element={<RequirePage page="account_ledger"><AccountLedgerPage /></RequirePage>} />
@@ -82,6 +87,7 @@ export default function App() {
             <Route path="/trial-balance" element={<RequirePage page="trial_balance"><TrialBalancePage /></RequirePage>} />
             <Route path="/reports/comparison" element={<RequirePage page="reports_comparison"><ReportsComparisonPage /></RequirePage>} />
             <Route path="/gst-summary" element={<RequirePage page="gst_summary"><GstSummaryPage /></RequirePage>} />
+            <Route path="/tds-summary" element={<RequirePage page="tds_summary"><TdsSummaryPage /></RequirePage>} />
             <Route path="/users" element={<RequirePage page="user_management"><UserManagementPage /></RequirePage>} />
             <Route path="/audit-log" element={<RequirePage page="audit_log"><AuditLogPage /></RequirePage>} />
             <Route path="/testing/delete-month-journals" element={<RequirePage page="journal_entries"><DeleteMonthJournalsPage /></RequirePage>} />

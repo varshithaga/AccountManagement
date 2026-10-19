@@ -510,7 +510,7 @@ def post_purchase_bill(db: Session, bill: PurchaseBill) -> PurchaseBill:
     if bill.tds_amount:
         section = db.get(TdsSection, bill.tds_section_id)
         lines.append((_tds_account_id(db, section), ZERO, bill.tds_amount,
-                      f'TDS {section.code} @ {section.rate.normalize()}% on {bill.bill_number} - {supplier.name}'))
+                      f'TDS {section.code} @ {section.rate.normalize():f}% on {bill.bill_number} - {supplier.name}'))
     entry = _post_entry(db, f'PB-{supplier.id}-{bill.bill_number}', bill.bill_date,
                         f'Purchase bill {bill.bill_number} - {supplier.name}', ORIGIN_PURCHASE_BILL, lines)
     bill.journal_entry_id = entry.id

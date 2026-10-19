@@ -118,6 +118,19 @@ export interface DashboardRecentStatements {
     results: BankStatement[]
 }
 
+/** This calendar month's sales and purchases (taxable value), GST payable, and what falls due. */
+export interface DashboardSalesOverview {
+    month: { start: string; end: string }
+    sales: number
+    purchases: number
+    gst_payable: number
+    receivable_next_7_days: { count: number; amount: number }
+    payable_next_7_days: { count: number; amount: number }
+    receivable_overdue: { count: number; amount: number }
+    payable_overdue: { count: number; amount: number }
+    recurring_due: number
+}
+
 export interface DashboardOverview {
     kpis: DashboardKPIs
     cash_position: DashboardCashPosition
@@ -150,6 +163,12 @@ export const dashboardApi = {
         const response = await axios.get(createApiUrl('/dashboard/kpis/'), {
             headers: await getAuthHeaders(),
             params,
+        });
+        return response.data;
+    },
+    getSalesOverview: async (): Promise<DashboardSalesOverview> => {
+        const response = await axios.get(createApiUrl('/dashboard/sales-overview/'), {
+            headers: await getAuthHeaders(),
         });
         return response.data;
     },

@@ -164,7 +164,9 @@ function buildSteps(s: WorkflowStatus): Step[] {
       todo: [
         'Clients / Suppliers → add each one with its GSTIN and state - the state decides CGST + SGST or IGST.',
         'Set your own company state once under Period Close.',
-        'Products & Tax Rates → check the GST rates and add what you sell, with its income account.',
+        'Products & Tax Rates → check the GST rates and add what you sell, with its income account. Turn on "Track stock" for goods you keep, then enter their opening stock on the Inventory page.',
+        'Deduct TDS from suppliers? Add the sections under Products & Tax Rates → TDS sections and give each supplier its default section.',
+        'Many to add? Use "Import from Excel" on Clients, Suppliers or Products.',
       ],
       state: sales.clients + sales.suppliers > 0 ? 'done' : 'optional',
       metric: `${fmtNum(sales.clients)} clients · ${fmtNum(sales.suppliers)} suppliers · ${fmtNum(sales.products)} products · ${fmtNum(sales.tax_rates)} tax rates`,
@@ -179,7 +181,9 @@ function buildSteps(s: WorkflowStatus): Step[] {
       what: 'A sales invoice stays a draft until you Post it - posting books it (Dr Receivable, Cr income and output GST). A purchase bill is the reverse. Returns and discounts are a credit note (on an invoice) or a debit note (on a bill). Any document can be printed or downloaded as a PDF.',
       todo: [
         'Sales Invoices → New invoice → Post when it is final. Drafts are not in the books.',
-        'Purchase Bills → record each supplier bill and Post it.',
+        'Open a posted invoice → Email to send it to the client with the PDF attached.',
+        'Same invoice every month or quarter? Set it up once under Recurring Invoices - due invoices are raised automatically.',
+        'Purchase Bills → record each supplier bill and Post it. A TDS section keeps back the TDS from what you pay the supplier.',
         'Goods returned or a price corrected? Open the document → Credit note / Debit note.',
       ],
       state: sales.draft_invoices + sales.draft_bills > 0 ? 'attention' : (sales.invoices + sales.bills > 0 ? 'done' : 'optional'),
@@ -194,7 +198,8 @@ function buildSteps(s: WorkflowStatus): Step[] {
       what: 'Money received from a client or paid to a supplier is a payment, allocated to the invoices or bills it settles. Receivables & Payables shows who owes what and how overdue it is.',
       todo: [
         'Payments & Receipts → record the payment and allocate it to its invoices / bills.',
-        'Receivables & Payables → chase overdue invoices and plan supplier payments.',
+        'Receivables & Payables → chase overdue invoices (the Reminders tab has the text ready to email or copy) and plan supplier payments.',
+        'TDS kept back on bills is owed to the government: pay it with a journal entry Dr TDS Payable / Cr Bank, and check TDS Summary.',
         'Bank Reconciliation → match the payment to its line on the bank statement.',
       ],
       state: sales.overdue_invoices + sales.overdue_bills + sales.unallocated_payments > 0
@@ -213,6 +218,7 @@ function buildSteps(s: WorkflowStatus): Step[] {
         'Balance Sheet - assets = liabilities + equity at a date.',
         'Trial Balance - the balance of every account; debits = credits.',
         'GST Summary - output GST, input credit and the net payable, split CGST / SGST / IGST.',
+        'TDS Summary - TDS kept back by section and supplier (with PAN), paid and still to pay.',
         'Period Comparison - two periods side by side. Every report exports to Excel.',
       ],
       state: 'info',
@@ -222,6 +228,7 @@ function buildSteps(s: WorkflowStatus): Step[] {
         { label: 'Balance Sheet', to: '/balance-sheet' },
         { label: 'Trial Balance', to: '/trial-balance' },
         { label: 'GST Summary', to: '/gst-summary' },
+        { label: 'TDS Summary', to: '/tds-summary' },
         { label: 'Comparison', to: '/reports/comparison' },
       ],
     },

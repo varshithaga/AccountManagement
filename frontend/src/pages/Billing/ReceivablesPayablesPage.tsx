@@ -7,15 +7,36 @@ import { exportToExcel } from '../../utils/excelExport'
 import { AGING_BUCKETS, agingApi, errorText } from './billingapi'
 import type { AgingBucket, AgingReport } from './billingapi'
 import { TABLE_HEAD_ROW, TABLE_ROW, TD, TH, formatDate, todayIso } from './billingParts'
+import { useAuth } from '../../context/AuthContext'
+import RemindersPanel from './RemindersPanel'
 
-type Kind = 'receivables' | 'payables'
+type Kind = 'receivables' | 'payables' | 'reminders'
 
 const BUCKET_LABELS: Record<AgingBucket, string> = {
   current: 'Not yet due', '1_30': '1–30 days', '31_60': '31–60 days', '61_90': '61–90 days', over_90: 'Over 90 days',
 }
 
+const KIND_OPTIONS: { value: Kind; label: string }[] = [
+  { value: 'receivables', label: 'Receivables' }, { value: 'payables', label: 'Payables' }, { value: 'reminders', label: 'Reminders' },
+]
+
 export default function ReceivablesPayablesPage() {
   const [kind, setKind] = useState<Kind>('receivables')
+  const { can } = useAuth()
+  if (kind === 'reminders') {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader title="Receivables & payables"
+          description="Payment reminders for overdue invoices - copy the text, email it, or record that you reminded them another way."
+          actions={<Tabs<Kind> value={kind} onChange={setKind} options={KIND_OPTIONS} />} />
+        <RemindersPanel canSend={can('sales_invoices', 'edit')} />
+      </div>
+    )
+  }
+  return <AgingView kind={kind} setKind={setKind} />
+}
+
+function AgingView({ kind, setKind }: { kind: 'receivables' | 'payables'; setKind: (k: Kind) => void }) {
   const [asOf, setAsOf] = useState(todayIso())
   const [report, setReport] = useState<AgingReport | null>(null)
   const [loading, setLoading] = useState(true)
@@ -63,8 +84,7 @@ export default function ReceivablesPayablesPage() {
         title="Receivables & payables"
         description="What clients owe you and what you owe suppliers, by how long it has been due."
         actions={<>
-          <Tabs<Kind> value={kind} onChange={setKind}
-            options={[{ value: 'receivables', label: 'Receivables' }, { value: 'payables', label: 'Payables' }]} />
+          <Tabs<Kind> value={kind} onChange={setKind} options={KIND_OPTIONS} />
           <div className="w-44"><DateField id="aging-as-of" value={asOf} onChange={setAsOf} /></div>
           <Button variant="outlined" icon={<Download />} onClick={exportExcel} disabled={!report}>Export</Button>
           <IconButton title="Refresh" onClick={load} disabled={loading}>

@@ -35,6 +35,9 @@ export interface Party {
   address?: string
   payable_account?: number | null
   payable_account_name?: string | null
+  /** Default TDS section for this supplier's bills. */
+  tds_section?: number | null
+  tds_section_name?: string | null
 }
 
 export interface TaxRate {
@@ -64,6 +67,22 @@ export interface Product {
   income_account_name: string | null
   expense_account: number | null
   expense_account_name: string | null
+  is_active: boolean
+  /** Goods only: posting invoices, bills and notes moves its stock. */
+  track_inventory: boolean
+  reorder_level: string | null
+}
+
+/** A TDS section (194C, 194J ...): a bill under it keeps back rate% of its taxable value. */
+export interface TdsSection {
+  id: number
+  code: string
+  name: string
+  rate: string
+  threshold: string | null
+  /** Where the TDS kept back is credited; none = the "TDS Payable" sub-category. */
+  account: number | null
+  account_name: string | null
   is_active: boolean
 }
 
@@ -162,6 +181,16 @@ export interface BillingDoc extends GstFields {
   payments?: DocPayment[]
   credit_notes?: NoteSummary[]
   party?: PrintParty
+  // sales invoices
+  reminder_count?: number
+  last_reminder_at?: string | null
+  /** The recurring invoice that raised it. */
+  recurring_invoice?: number | null
+  // purchase bills: balance due = total - TDS - paid - credited
+  tds_section?: number | null
+  tds_section_name?: string | null
+  tds_rate?: string
+  tds_amount?: string
 }
 
 export interface NoteSummary {
@@ -365,6 +394,25 @@ export const creditNotesApi = {
   remove: (id: number) => api.delete(`/credit-notes/${id}/`),
 }
 
+export const tdsSectionsApi = {
+  list: (params: Params = {}) => all<TdsSection>('/tds-sections/', params),
+  create: async (payload: Params): Promise<TdsSection> => (await api.post('/tds-sections/', payload)).data,
+  update: async (id: number, payload: Params): Promise<TdsSection> => (await api.patch(`/tds-sections/${id}/`, payload)).data,
+  remove: (id: number) => api.delete(`/tds-sections/${id}/`),
+}
+
+export interface BulkImportResult {
+  created: number
+  valid_rows: number
+  /** Row numbers count from 1 (the first data row). */
+  errors: { row: number; message: string }[]
+  dry_run: boolean
+}
+
+/** All or nothing: nothing is saved unless every row is valid; dryRun only checks. */
+export const bulkImport = async (target: PartyKind | 'products', rows: Params[], dryRun: boolean): Promise<BulkImportResult> =>
+  (await api.post(`/${target}/bulk-import/`, { rows, dry_run: dryRun })).data
+
 export const companyApi = {
   get: async (): Promise<Company> => (await api.get('/period-close/company/')).data,
 }
@@ -426,6 +474,189 @@ export const gstApi = {
     (await api.get('/reports/gst-summary/', { params, signal })).data,
   exportCsv: async (params: GstParams): Promise<Blob> =>
     (await api.get('/reports/gst-summary/', { params: { ...params, format: 'csv' }, responseType: 'blob' })).data,
+}
+
+export interface TdsSectionRow {
+  section: number
+  code: string
+  name: string
+  rate: number
+  bills: number
+  taxable: number
+  tds: number
+}
+
+export interface TdsSummary {
+  period: string
+  date_from: string | null
+  date_to: string | null
+  total_deducted: number
+  total_taxable: number
+  /** The TDS accounts in the period: credited (kept back, incl. manual entries) and debited (paid to the government). */
+  books: { credited: number; paid: number }
+  /** Still to be paid to the government at the end of the period. */
+  outstanding: number
+  by_section: TdsSectionRow[]
+  by_supplier: { supplier: number; supplier_name: string; pan: string; section_code: string; bills: number; taxable: number; tds: number }[]
+  bills: { id: number; bill_number: string; bill_date: string; supplier_name: string; pan: string; section_code: string; rate: number; taxable: number; tds: number }[]
+}
+
+export const tdsApi = {
+  summary: async (params: GstParams, signal?: AbortSignal): Promise<TdsSummary> =>
+    (await api.get('/reports/tds-summary/', { params, signal })).data,
+  exportCsv: async (params: GstParams): Promise<Blob> =>
+    (await api.get('/reports/tds-summary/', { params: { ...params, format: 'csv' }, responseType: 'blob' })).data,
+}
+
+export interface StockItem {
+  product: number
+  name: string
+  code: string | null
+  unit: string
+  hsn_sac_code: string
+  is_active: boolean
+  quantity_in: number
+  quantity_out: number
+  on_hand: number
+  /** Weighted average of everything that came in with a cost (else the product's purchase price). */
+  average_cost: number
+  value: number
+  reorder_level: string | null
+  below_reorder_level: boolean
+  negative: boolean
+}
+
+export interface StockSummary {
+  as_of: string | null
+  products: StockItem[]
+  total_value: number
+  below_reorder_level: number
+  negative: number
+}
+
+export type StockMovementKind = 'OPENING' | 'ADJUSTMENT' | 'PURCHASE' | 'SALE' | 'SALES_RETURN' | 'PURCHASE_RETURN'
+
+export interface StockMovement {
+  id: number
+  date: string
+  kind: StockMovementKind
+  /** + in, - out */
+  quantity: number
+  unit_cost: number | null
+  note: string
+  document: { type: 'sales_invoice' | 'purchase_bill' | 'credit_note'; id: number; number: string } | null
+  /** Stock after this movement. */
+  balance: number
+  created_by: string | null
+}
+
+export interface ProductMovements {
+  product: { id: number; name: string; unit: string }
+  opening: number
+  closing: number
+  rows: StockMovement[]
+}
+
+export const inventoryApi = {
+  stock: async (params: { as_of?: string; search?: string } = {}, signal?: AbortSignal): Promise<StockSummary> =>
+    (await api.get('/inventory/', { params, signal })).data,
+  movements: async (productId: number, params: { date_from?: string; date_to?: string } = {}): Promise<ProductMovements> =>
+    (await api.get(`/inventory/${productId}/movements/`, { params })).data,
+  /** Opening stock (opening: true) or a correction after a count / damage (+ or -). */
+  adjust: async (payload: { product: number; quantity: string; movement_date?: string; unit_cost?: string | null; note?: string; opening?: boolean }): Promise<ProductMovements & { id: number }> =>
+    (await api.post('/inventory/adjustments/', payload)).data,
+  removeAdjustment: (id: number) => api.delete(`/inventory/adjustments/${id}/`),
+}
+
+export type Frequency = 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY'
+
+export interface RecurringInvoice {
+  id: number
+  name: string
+  client: number
+  client_name: string
+  frequency: Frequency
+  start_date: string
+  /** The date of the next invoice it will raise. */
+  next_date: string
+  end_date: string | null
+  items: ItemPayload[]
+  notes: string
+  /** Post the invoices straight away instead of leaving drafts. */
+  auto_post: boolean
+  is_active: boolean
+  invoices_created: number
+  /** Why the last run failed ("" when fine) - the template is skipped until it is fixed. */
+  last_error: string
+  created_by: string | null
+  created_at: string
+  /** Detail only: the latest invoices it raised. */
+  invoices?: { id: number; invoice_number: string; invoice_date: string; total: string; status: DocStatus }[]
+}
+
+export interface GenerateResult {
+  invoices_created: number
+  templates: number
+  errors: { id: number; name: string; error: string }[]
+}
+
+export const recurringApi = {
+  search: async (params: Params = {}): Promise<Paginated<RecurringInvoice> & { due: number }> =>
+    (await api.get('/recurring-invoices/', { params })).data,
+  get: async (id: number): Promise<RecurringInvoice> => (await api.get(`/recurring-invoices/${id}/`)).data,
+  create: async (payload: Params): Promise<RecurringInvoice> => (await api.post('/recurring-invoices/', payload)).data,
+  update: async (id: number, payload: Params): Promise<RecurringInvoice> =>
+    (await api.patch(`/recurring-invoices/${id}/`, payload)).data,
+  remove: (id: number) => api.delete(`/recurring-invoices/${id}/`),
+  /** Raises every invoice that has fallen due. */
+  generateDue: async (): Promise<GenerateResult> => (await api.post('/recurring-invoices/generate/')).data,
+  generateOne: async (id: number): Promise<RecurringInvoice & { invoices_created: number; invoice_ids: number[] }> =>
+    (await api.post(`/recurring-invoices/${id}/generate/`)).data,
+}
+
+export interface EmailStatus {
+  configured: boolean
+  from: string
+}
+
+export interface ReminderClient {
+  client: number
+  client_name: string
+  email: string
+  phone: string
+  total_overdue: number
+  oldest_days_overdue: number
+  last_reminder_at: string | null
+  invoices: { id: number; invoice_number: string; invoice_date: string; due_date: string; balance_due: number; days_overdue: number; reminder_count: number; last_reminder_at: string | null }[]
+  /** Ready-made reminder text. */
+  subject: string
+  message: string
+}
+
+export interface Reminders {
+  as_of: string
+  email: EmailStatus
+  clients: ReminderClient[]
+  total_overdue: number
+}
+
+export const emailApi = {
+  status: async (): Promise<EmailStatus> => (await api.get('/email/status/')).data,
+  /** Sends a posted invoice with its PDF attached. */
+  sendInvoice: async (invoiceId: number, form: { to: string; cc?: string; subject?: string; message?: string }, pdf?: Blob, filename?: string): Promise<{ sent_to: string[] }> => {
+    const body = new FormData()
+    Object.entries(form).forEach(([k, v]) => body.append(k, v ?? ''))
+    if (pdf) body.append('file', pdf, filename ?? 'invoice.pdf')
+    return (await api.post(`/sales-invoices/${invoiceId}/email/`, body)).data
+  },
+}
+
+export const remindersApi = {
+  list: async (params: { as_of?: string; min_days?: number } = {}): Promise<Reminders> =>
+    (await api.get('/reminders/', { params })).data,
+  /** send_email false: it was sent another way (phone, WhatsApp) - only record it. */
+  send: async (payload: { client_id: number; invoice_ids: number[]; to?: string; cc?: string; subject?: string; message?: string; send_email: boolean }): Promise<{ reminded: number; sent_to: string[]; last_reminder_at: string }> =>
+    (await api.post('/reminders/send/', payload)).data,
 }
 
 export const agingApi = {

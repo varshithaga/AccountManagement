@@ -1,24 +1,26 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   FileText, ShoppingCart, Plus, Pencil, Trash2, RefreshCw, Send, Ban, Eye, AlertTriangle, Wallet, FilePen,
-  CheckCircle2, X, HandCoins, FileMinus, Download, Printer,
+  CheckCircle2, X, HandCoins, FileMinus, Download, Printer, Mail,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import Pagination, { DEFAULT_ROWS_PER_PAGE } from '../../components/Pagination'
-import SearchableSelect from '../../components/SearchableSelect'
-import type { SearchableOption } from '../../components/SearchableSelect'
 import { Alert, Button, DateField, Drawer, IconButton, Modal, Panel, Select, Spinner, Switch, Tabs, TextField } from '../../components/tw'
 import { EmptyState, KpiTile, PageHeader, RowAction, SearchBox } from '../../components/PageParts'
 import { formatMoney } from '../../utils/periods'
 import { withUnmatchConfirm } from '../../utils/reconcileConfirm'
-import { companyApi, creditNotesApi, docsApi, errorText, productsApi, taxRatesApi } from './billingapi'
-import type { BillingDoc, Company, DocKind, DocStatus, DocSummary, ItemPayload, Product, TaxRate } from './billingapi'
+import { companyApi, creditNotesApi, docsApi, errorText, partiesApi, taxRatesApi, tdsSectionsApi } from './billingapi'
+import type { BillingDoc, Company, DocKind, DocStatus, DocSummary, TaxRate, TdsSection } from './billingapi'
 import { downloadDocumentPdf, noteToPrintable, printDocumentPdf, toPrintable } from './documentPdf'
 import {
-  AccountSelect, Field, PartySelect, StatusChip, TABLE_HEAD_ROW, TABLE_ROW, TD, TH, formatDate, isOverdue, todayIso,
+  Field, PartySelect, StatusChip, TABLE_HEAD_ROW, TABLE_ROW, TD, TH, formatDate, isOverdue, todayIso,
 } from './billingParts'
 import { PaymentEditor } from './PaymentsPage'
 import CreditNoteDialog from './CreditNoteDialog'
+import EmailInvoiceDialog from './EmailInvoiceDialog'
+import LineItemsEditor from './LineItemsEditor'
+import { blankLine, lineTotals, linesFromItems, linesToPayload } from './lineItems'
+import type { Line } from './lineItems'
 
 type StatusFilter = 'ALL' | DocStatus
 
@@ -262,6 +264,8 @@ function DocDrawer({ kind, id, onClose, onEdit, onPost, onCancel, onPay, onChang
   const [doc, setDoc] = useState<BillingDoc | null>(null)
   const [error, setError] = useState('')
   const [noting, setNoting] = useState(false)
+  const [emailing, setEmailing] = useState(false)
+  const [sentNotice, setSentNotice] = useState('')
   // Printed on every PDF; loaded up front so Print can open its tab straight from the click.
   const [company, setCompany] = useState<Company | null>(null)
   useEffect(() => { companyApi.get().then(setCompany).catch(() => setCompany(null)) }, [])
@@ -307,6 +311,9 @@ function DocDrawer({ kind, id, onClose, onEdit, onPost, onCancel, onPay, onChang
         <h2 className="num font-display text-xl font-bold text-ink">{doc ? docNumber(doc) : '…'}</h2>
       </div>}>
       {error && <Alert>{error}</Alert>}
+      {sentNotice && (
+        <div role="status" className="mb-3 rounded-xl border border-success/30 bg-success-soft px-4 py-3 text-sm font-medium text-success-text">{sentNotice}</div>
+      )}
       {!doc && !error && <div className="flex justify-center p-10"><Spinner size={28} /></div>}
       {doc && (
         <div className="flex flex-col gap-5">
@@ -361,6 +368,7 @@ function DocDrawer({ kind, id, onClose, onEdit, onPost, onCancel, onPay, onChang
                 <Row label="SGST" value={formatMoney(doc.sgst_amount)} />
               </>}
             <Row label="Total" value={formatMoney(doc.total)} strong />
+            {Number(doc.tds_amount) > 0 && <Row label={`TDS kept back (${doc.tds_section_name} @ ${Number(doc.tds_rate)}%)`} value={formatMoney(doc.tds_amount)} />}
             <Row label="Paid" value={formatMoney(doc.amount_paid)} />
             {Number(doc.amount_credited) > 0 && <Row label={kind === 'sales' ? 'Credited' : 'Debit notes'} value={formatMoney(doc.amount_credited)} />}
             <Row label="Balance due" value={formatMoney(doc.balance_due)} strong />
@@ -410,6 +418,9 @@ function DocDrawer({ kind, id, onClose, onEdit, onPost, onCancel, onPay, onChang
           <div className="flex flex-wrap gap-2 border-t border-border-soft pt-4">
             <Button variant="outlined" icon={<Download />} onClick={() => pdf(false)}>PDF</Button>
             <Button variant="outlined" icon={<Printer />} onClick={() => pdf(true)}>Print</Button>
+            {kind === 'sales' && doc.status !== 'DRAFT' && doc.status !== 'CANCELLED' && canEdit && (
+              <Button variant="outlined" icon={<Mail />} onClick={() => setEmailing(true)}>Email</Button>
+            )}
             {doc.status === 'DRAFT' && canEdit && <>
               <Button variant="outlined" icon={<Pencil />} onClick={() => onEdit(doc)}>Edit</Button>
               <Button variant="contained" icon={<Send />} onClick={async () => { await onPost(doc); reload() }}>Post</Button>
@@ -429,6 +440,10 @@ function DocDrawer({ kind, id, onClose, onEdit, onPost, onCancel, onPay, onChang
         <CreditNoteDialog kind={kind} doc={doc} onClose={() => setNoting(false)}
           onSaved={() => { setNoting(false); reload(); onChanged() }} />
       )}
+      {emailing && doc && (
+        <EmailInvoiceDialog invoice={doc} company={company ?? noCompany} onClose={() => setEmailing(false)}
+          onSent={(sentTo) => { setEmailing(false); setSentNotice(`Emailed to ${sentTo.join(', ')}.`) }} />
+      )}
     </Drawer>
   )
 }
@@ -445,33 +460,6 @@ function Row({ label, value, strong = false }: { label: string; value: string; s
 // Editor (create / edit a draft)
 // ---------------------------------------------------------------------------
 
-interface Line {
-  key: number
-  product: SearchableOption | null
-  description: string
-  quantity: string
-  unit_price: string
-  discount_percent: string
-  tax_rate_id: number | null
-  account_id: number | null
-  account_label: string | null
-}
-
-let lineKey = 0
-const blankLine = (): Line => ({
-  key: ++lineKey, product: null, description: '', quantity: '1', unit_price: '', discount_percent: '0',
-  tax_rate_id: null, account_id: null, account_label: null,
-})
-
-const round2 = (n: number) => Math.round(n * 100) / 100
-
-function lineAmounts(line: Line, rates: TaxRate[]) {
-  const amount = round2((Number(line.quantity) || 0) * (Number(line.unit_price) || 0) * (100 - (Number(line.discount_percent) || 0)) / 100)
-  const rate = rates.find((r) => r.id === line.tax_rate_id)
-  const tax = rate ? round2(amount * Number(rate.rate) / 100) : 0
-  return { amount, tax }
-}
-
 function DocEditor({ kind, doc, onClose, onSaved }: {
   kind: DocKind
   doc: BillingDoc | null
@@ -485,46 +473,37 @@ function DocEditor({ kind, doc, onClose, onSaved }: {
   const [date, setDate] = useState(doc ? docDate(doc) : todayIso())
   const [dueDate, setDueDate] = useState(doc?.due_date ?? '')
   const [notes, setNotes] = useState(doc?.notes ?? '')
-  const [lines, setLines] = useState<Line[]>(() => doc?.items?.length
-    ? doc.items.map((i) => ({
-      key: ++lineKey, product: i.product ? { id: i.product, label: i.product_name ?? '' } : null,
-      description: i.description, quantity: String(Number(i.quantity)), unit_price: i.unit_price,
-      discount_percent: String(Number(i.discount_percent)), tax_rate_id: i.tax_rate, account_id: i.account,
-      account_label: i.account_name,
-    }))
-    : [blankLine()])
+  const [lines, setLines] = useState<Line[]>(() => (doc?.items?.length ? linesFromItems(doc.items) : [blankLine()]))
   const [rates, setRates] = useState<TaxRate[]>([])
+  // Bills: undefined = the supplier's default section (a new bill), null = no TDS.
+  const [tdsSection, setTdsSection] = useState<number | null | undefined>(doc ? doc.tds_section ?? null : undefined)
+  const [sections, setSections] = useState<TdsSection[]>([])
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => { taxRatesApi.list({ is_active: true }).then(setRates).catch(() => {}) }, [])
   useEffect(() => {
     if (!doc && kind === 'sales') api.nextNumber().then((n) => setNumber((cur) => cur || n || '')).catch(() => {})
+    if (kind === 'purchase') tdsSectionsApi.list().then(setSections).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const totals = useMemo(() => lines.reduce((acc, l) => {
-    const { amount, tax } = lineAmounts(l, rates)
-    return { subtotal: acc.subtotal + amount, tax: acc.tax + tax }
-  }, { subtotal: 0, tax: 0 }), [lines, rates])
-
-  const update = (key: number, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)))
-
-  const pickProduct = (key: number, opt: SearchableOption | null) => {
-    const p = opt?.meta as Product | undefined
-    if (!p) {
-      update(key, { product: null })
-      return
+  /** A bill takes its supplier's default TDS section; it can still be changed or cleared. */
+  const pickParty = async (id: number | null) => {
+    setParty(id)
+    if (kind !== 'purchase' || !id) return
+    try {
+      setTdsSection((await partiesApi('suppliers').get(id)).tds_section ?? null)
+    } catch {
+      // keep what is chosen
     }
-    update(key, {
-      product: opt,
-      description: p.name,
-      unit_price: kind === 'sales' ? p.sale_price : p.purchase_price,
-      tax_rate_id: p.tax_rate,
-      account_id: kind === 'sales' ? p.income_account : p.expense_account,
-      account_label: kind === 'sales' ? p.income_account_name : p.expense_account_name,
-    })
   }
+
+  const totals = useMemo(() => lineTotals(lines, rates), [lines, rates])
+  const total = totals.subtotal + totals.tax
+  const section = sections.find((t) => t.id === tdsSection)
+  // TDS is on the taxable value (before GST), as the backend works it out.
+  const tds = section ? Math.round(totals.subtotal * Number(section.rate)) / 100 : 0
 
   const save = async (postToo: boolean) => {
     if (!party) {
@@ -535,13 +514,7 @@ function DocEditor({ kind, doc, onClose, onSaved }: {
       setError("Enter the supplier's bill number.")
       return
     }
-    const items: ItemPayload[] = lines
-      .filter((l) => l.description.trim() || l.product)
-      .map((l) => ({
-        product_id: l.product?.id ?? null, description: l.description.trim(), quantity: l.quantity || '1',
-        unit_price: l.unit_price || '0', discount_percent: l.discount_percent || '0', tax_rate_id: l.tax_rate_id,
-        account_id: l.account_id,
-      }))
+    const items = linesToPayload(lines)
     if (!items.length) {
       setError('Add at least one line.')
       return
@@ -553,6 +526,7 @@ function DocEditor({ kind, doc, onClose, onSaved }: {
       due_date: dueDate || null,
       notes,
       items,
+      ...(kind === 'purchase' && tdsSection !== undefined ? { tds_section_id: tdsSection } : {}),
     }
     setSaving(true)
     setError('')
@@ -567,17 +541,15 @@ function DocEditor({ kind, doc, onClose, onSaved }: {
     }
   }
 
-  const fetchProducts = async ({ search, page }: { search: string; page: number }) => {
-    const res = await productsApi.search({ search: search.trim() || undefined, is_active: true, page, limit: 20 })
-    return { options: res.results.map((p) => ({ id: p.id, label: p.name, meta: p })), hasMore: Boolean(res.next) }
-  }
-
   return (
     <Modal open onClose={onClose} icon={kind === 'sales' ? <FileText /> : <ShoppingCart />}
       title={doc ? `Edit ${text.single} ${docNumber(doc)}` : `New ${text.single}`}
       subtitle="Saved as a draft until you post it."
       widthClassName="max-w-5xl"
-      footerHint={<span className="num">Subtotal {formatMoney(totals.subtotal)} · GST {formatMoney(totals.tax)} · <b className="text-ink">Total {formatMoney(totals.subtotal + totals.tax)}</b></span>}
+      footerHint={<span className="num">
+        Subtotal {formatMoney(totals.subtotal)} · GST {formatMoney(totals.tax)} · <b className="text-ink">Total {formatMoney(total)}</b>
+        {tds > 0 && <> · TDS {formatMoney(tds)} · <b className="text-ink">Payable {formatMoney(total - tds)}</b></>}
+      </span>}
       footer={<>
         <Button variant="outlined" onClick={onClose}>Cancel</Button>
         <Button variant="outlined" onClick={() => save(false)} disabled={saving}>Save draft</Button>
@@ -587,62 +559,35 @@ function DocEditor({ kind, doc, onClose, onSaved }: {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <div className="md:col-span-2">
           <PartySelect kind={text.partyKind} value={party} valueLabel={doc ? docParty(doc) : null} required
-            onChange={(id) => setParty(id)} />
+            onChange={(id) => { void pickParty(id) }} />
         </div>
         <TextField id="doc-number" label={kind === 'sales' ? 'Invoice number' : "Supplier's bill number"} required={kind === 'purchase'}
           value={number} inputClassName="num" onChange={(e) => setNumber(e.target.value)}
           placeholder={kind === 'sales' ? 'Auto' : 'e.g. PC-778'} />
         <DateField id="doc-date" label={kind === 'sales' ? 'Invoice date' : 'Bill date'} value={date} onChange={setDate} />
         <DateField id="doc-due" label="Due date (default: payment terms)" value={dueDate} onChange={setDueDate} min={date} />
+        {kind === 'purchase' && (
+          <div className="md:col-span-2">
+            <Select id="doc-tds" label="TDS section" value={tdsSection ?? ''}
+              onChange={(e) => setTdsSection(e.target.value ? Number(e.target.value) : null)}>
+              <option value="">No TDS</option>
+              {sections.filter((t) => t.is_active || t.id === tdsSection).map((t) => (
+                <option key={t.id} value={t.id}>{t.code} · {t.name} ({Number(t.rate)}%)</option>
+              ))}
+            </Select>
+          </div>
+        )}
       </div>
 
-      <div className="flex flex-col gap-3">
-        <p className="text-xs font-bold uppercase tracking-[0.06em] text-muted">Lines</p>
-        {lines.map((l, idx) => {
-          const { amount, tax } = lineAmounts(l, rates)
-          return (
-            <div key={l.key} className="grid grid-cols-2 gap-3 rounded-xl border border-border-soft p-3 md:grid-cols-12">
-              <div className="col-span-2 md:col-span-4">
-                <SearchableSelect label={`Line ${idx + 1} · product (optional)`} value={l.product}
-                  onChange={(opt) => pickProduct(l.key, opt)} fetchOptions={fetchProducts} placeholder="Pick a product…" />
-              </div>
-              <TextField className="col-span-2 md:col-span-8" id={`l-desc-${l.key}`} label="Description" value={l.description}
-                onChange={(e) => update(l.key, { description: e.target.value })} />
-              <TextField className="md:col-span-2" id={`l-qty-${l.key}`} label="Qty" type="number" value={l.quantity} inputClassName="num"
-                onChange={(e) => update(l.key, { quantity: e.target.value })} />
-              <TextField className="md:col-span-2" id={`l-price-${l.key}`} label="Unit price" type="number" value={l.unit_price} inputClassName="num"
-                onChange={(e) => update(l.key, { unit_price: e.target.value })} />
-              <TextField className="md:col-span-1" id={`l-disc-${l.key}`} label="Disc %" type="number" value={l.discount_percent} inputClassName="num"
-                onChange={(e) => update(l.key, { discount_percent: e.target.value })} />
-              <div className="md:col-span-2">
-                <Select id={`l-tax-${l.key}`} label="GST" value={l.tax_rate_id ?? ''}
-                  onChange={(e) => update(l.key, { tax_rate_id: e.target.value ? Number(e.target.value) : null })}>
-                  <option value="">No tax</option>
-                  {rates.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-                </Select>
-              </div>
-              <div className="col-span-2 md:col-span-4">
-                <AccountSelect label={kind === 'sales' ? 'Income account' : 'Expense account'} required
-                  accountType={kind === 'sales' ? 'INCOME' : undefined}
-                  value={l.account_id} valueLabel={l.account_label}
-                  onChange={(id) => update(l.key, { account_id: id, account_label: null })} />
-              </div>
-              <div className="col-span-2 flex items-end justify-between gap-2 md:col-span-1 md:flex-col md:items-end">
-                <span className="num text-sm font-semibold text-ink" title={`GST ${formatMoney(tax)}`}>{formatMoney(amount)}</span>
-                {lines.length > 1 && (
-                  <button type="button" title="Remove line" onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg text-danger-text hover:bg-danger-soft">
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-            </div>
-          )
-        })}
-        <div>
-          <Button variant="outlined" size="sm" icon={<Plus />} onClick={() => setLines((ls) => [...ls, blankLine()])}>Add line</Button>
+      <LineItemsEditor kind={kind} lines={lines} onChange={setLines} rates={rates} />
+
+      {tds > 0 && section && (
+        <div className="ml-auto flex w-full max-w-sm flex-col gap-1.5 text-sm">
+          <Row label="Total" value={formatMoney(total)} />
+          <Row label={`TDS kept back (${section.code} @ ${Number(section.rate)}%)`} value={formatMoney(tds)} />
+          <Row label="Payable to supplier" value={formatMoney(total - tds)} strong />
         </div>
-      </div>
+      )}
 
       <TextField id="doc-notes" label="Notes" multiline rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
     </Modal>

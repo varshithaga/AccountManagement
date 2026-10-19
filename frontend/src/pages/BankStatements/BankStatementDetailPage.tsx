@@ -390,16 +390,15 @@ export default function BankStatementDetailPage() {
             </>
           )}
           {statement.file && (
-            <a
-              href={statement.file}
-              download
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={() => bankStatementsApi.downloadFile(statement.id, statement.file ?? 'statement')
+                .catch(() => alert('The file could not be downloaded - it may no longer be on the server.'))}
               className="inline-flex h-[46px] items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-ink hover:bg-surface-muted"
             >
               <Download className="h-4 w-4" />
               Download File
-            </a>
+            </button>
           )}
             </>
           }

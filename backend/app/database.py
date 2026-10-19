@@ -22,6 +22,14 @@ if _is_sqlite:
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
+        # Let SQLAlchemy start transactions itself: the driver's own handling makes the first SAVEPOINT
+        # open the transaction, so releasing it committed - a dry-run import or a rolled-back
+        # recurring invoice was saved anyway.
+        dbapi_connection.isolation_level = None
+
+    @event.listens_for(engine, "begin")
+    def _sqlite_begin(conn):
+        conn.exec_driver_sql("BEGIN")
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 

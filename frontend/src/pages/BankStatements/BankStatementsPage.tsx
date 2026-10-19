@@ -687,17 +687,19 @@ export default function BankStatementsPage() {
                                 </button>
                               )}
                               {stmt.file && (
-                                <a
-                                  href={stmt.file}
-                                  download
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={() => { setMenuStmtId(null); setMenuPos(null) }}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setMenuStmtId(null)
+                                    setMenuPos(null)
+                                    bankStatementsApi.downloadFile(stmt.id, stmt.file ?? 'statement')
+                                      .catch(() => alert('The file could not be downloaded - it may no longer be on the server.'))
+                                  }}
                                   className="flex w-full items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-[13px] font-semibold text-ink hover:bg-surface-muted "
                                 >
                                   <Download className="h-4 w-4 text-muted" />
                                   Download File
-                                </a>
+                                </button>
                               )}
                               {canDelete && (
                                 <>

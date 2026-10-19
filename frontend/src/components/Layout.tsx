@@ -6,6 +6,7 @@ import {
   Moon, Sun, X, BookOpen, Link2, ListChecks, BookOpenCheck, GitMerge, Users,
   ChevronDown, Settings, Lock, Waves, NotebookText, FlaskConical,
   Contact, Truck, Package, FileText, ShoppingCart, HandCoins, Hourglass, Percent, History,
+  Repeat, Boxes, ReceiptIndianRupee,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { ALL_PAGES, PAGE_GROUPS, type PageKey } from '../access/pages'
@@ -50,6 +51,8 @@ const PAGE_ICONS: Record<PageKey, React.ReactNode> = {
   sales_invoices: <FileText className={ICON} />,
   purchase_bills: <ShoppingCart className={ICON} />,
   payments: <HandCoins className={ICON} />,
+  recurring_invoices: <Repeat className={ICON} />,
+  inventory: <Boxes className={ICON} />,
   receivables_payables: <Hourglass className={ICON} />,
   profit_and_loss: <BarChart3 className={ICON} />,
   balance_sheet: <Wallet className={ICON} />,
@@ -58,6 +61,7 @@ const PAGE_ICONS: Record<PageKey, React.ReactNode> = {
   account_ledger: <NotebookText className={ICON} />,
   reports_comparison: <GitCompare className={ICON} />,
   gst_summary: <Percent className={ICON} />,
+  tds_summary: <ReceiptIndianRupee className={ICON} />,
   user_management: <Users className={ICON} />,
   audit_log: <History className={ICON} />,
 }

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy import exists, func, not_, or_, select
 from sqlalchemy.orm import Session, joinedload
 
@@ -141,11 +142,10 @@ def _statement_filters(stmt, account, source_type, status, search):
     return stmt
 
 
-def _serialize_statements(db: Session, request: Request, statements: list[BankStatement]) -> list[dict]:
+def _serialize_statements(db: Session, statements: list[BankStatement]) -> list[dict]:
     counts = ser.statement_counts(db, [s.id for s in statements])
     continuity = cont.continuity_for_accounts(db, {s.account_id for s in statements})
-    base = str(request.base_url)
-    return [ser.statement(s, counts.get(s.id, {}), continuity.get(s.account_id, {}).get(s.id), base) for s in statements]
+    return [ser.statement(s, counts.get(s.id, {}), continuity.get(s.account_id, {}).get(s.id)) for s in statements]
 
 
 @router.get("/bank-statements/", dependencies=[Depends(statement_access)])
@@ -156,7 +156,7 @@ def list_statements(request: Request, db: Session = Depends(get_db), account: Op
                               account, source_type, status, search)
     stmt = apply_ordering(stmt, ordering, {"uploaded_at": BankStatement.uploaded_at},
                           [BankStatement.uploaded_at.desc(), BankStatement.id.desc()])
-    return paginate(db, stmt, page, limit, serialize_many=lambda rows: _serialize_statements(db, request, rows))
+    return paginate(db, stmt, page, limit, serialize_many=lambda rows: _serialize_statements(db, rows))
 
 
 @router.get("/bank-statements/summary/", dependencies=[Depends(statement_access)])
@@ -268,7 +268,7 @@ def upload_statement(request: Request, db: Session = Depends(get_db), account: O
     db.flush()
     _save_parsed_transactions(db, statement, rows)
     db.commit()
-    return _serialize_statements(db, request, [statement])[0]
+    return _serialize_statements(db, [statement])[0]
 
 
 @router.post("/bank-statements/check-duplicates/", dependencies=[Depends(Access("bank_statements", action=EDIT))])
@@ -283,8 +283,20 @@ def check_duplicates(db: Session = Depends(get_db)):
 
 
 @router.get("/bank-statements/{statement_id:int}/", dependencies=[Depends(statement_access)])
-def get_statement(statement_id: int, request: Request, db: Session = Depends(get_db)):
-    return _serialize_statements(db, request, [get_or_404(db, BankStatement, statement_id, "BankStatement")])[0]
+def get_statement(statement_id: int, db: Session = Depends(get_db)):
+    return _serialize_statements(db, [get_or_404(db, BankStatement, statement_id, "BankStatement")])[0]
+
+
+@router.get("/bank-statements/{statement_id:int}/file/", dependencies=[Depends(statement_access)])
+def download_statement_file(statement_id: int, db: Session = Depends(get_db)):
+    """The uploaded statement file - only to signed-in users with the Bank Statements page (there is no
+    public /media URL)."""
+    statement = get_or_404(db, BankStatement, statement_id, "BankStatement")
+    root = settings.media_root.resolve()
+    path = (root / (statement.file_path or "")).resolve()
+    if not statement.file_path or not path.is_relative_to(root) or not path.is_file():
+        raise not_found("The uploaded file is no longer on the server.")
+    return FileResponse(path, filename=path.name, media_type="application/octet-stream")
 
 
 @router.put("/bank-statements/{statement_id:int}/", dependencies=[Depends(statement_access)])
@@ -302,7 +314,7 @@ async def update_statement(statement_id: int, request: Request, db: Session = De
             raise APIError(400, {"source_type": [f'"{data["source_type"]}" is not a valid choice.']})
         statement.source_type = StatementSourceType(str(data["source_type"]).upper())
     db.commit()
-    return _serialize_statements(db, request, [statement])[0]
+    return _serialize_statements(db, [statement])[0]
 
 
 @router.delete("/bank-statements/{statement_id:int}/", status_code=204, dependencies=[Depends(statement_access)])

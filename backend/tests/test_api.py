@@ -117,6 +117,31 @@ def _upload(admin, account_id, content=STATEMENT_CSV, name="march.csv", **extra)
                       files={"file": (name, content.encode(), "text/csv")})
 
 
+def test_statement_file_needs_sign_in(admin, client):
+    from app.models import BankStatement
+    from app.database import SessionLocal
+
+    stmt = _upload(admin, _bank(admin)["id"]).json()
+    assert stmt["file"] == "march.csv"
+    r = admin.get(f"/api/bank-statements/{stmt['id']}/file/")
+    assert r.status_code == 200 and r.content == STATEMENT_CSV.encode()
+    assert 'filename="march.csv"' in r.headers["content-disposition"]
+
+    # No public copy, and nothing without a token.
+    with SessionLocal() as db:
+        path = db.get(BankStatement, stmt["id"]).file_path
+    assert admin.get(f"/media/{path}").status_code == 404
+    token = admin.headers.pop("Authorization")
+    assert admin.get(f"/api/bank-statements/{stmt['id']}/file/").status_code == 401
+    admin.headers["Authorization"] = token
+
+    # A stored path can never reach outside the media folder.
+    with SessionLocal() as db:
+        db.get(BankStatement, stmt["id"]).file_path = "../../app/config.py"
+        db.commit()
+    assert admin.get(f"/api/bank-statements/{stmt['id']}/file/").status_code == 404
+
+
 def test_statement_upload_categorize_and_finalize(admin):
     bank = _bank(admin)
     r = _upload(admin, bank["id"])

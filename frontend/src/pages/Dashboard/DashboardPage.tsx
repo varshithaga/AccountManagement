@@ -12,6 +12,7 @@ import { Button, Panel, Spinner, Alert, IconButton, type Tone } from '../../comp
 import DatePicker2 from '../../components/DatePicker2'
 import BankAccountSelect from '../../components/BankAccountSelect'
 import CashFlowForecastWidget from './CashFlowForecastWidget'
+import SalesOverviewWidget from './SalesOverviewWidget'
 
 type Period = 'this_month' | 'last_month' | 'this_quarter' | 'this_year' | 'custom'
 
@@ -475,6 +476,9 @@ export default function DashboardPage() {
           )}
         />
       </div>
+
+      {/* SALES & PURCHASES THIS MONTH */}
+      <SalesOverviewWidget />
 
       {/* CASH FLOW FORECAST & RUNWAY ANALYTICS WIDGET */}
       {dashData.cash_flow_forecast && (
