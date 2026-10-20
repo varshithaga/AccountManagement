@@ -26,6 +26,11 @@ export default defineConfig(({ mode }) => {
         },
       }),
     ],
+    build: {
+      // Pages, exceljs and jspdf are already loaded on demand; exceljs alone is ~930 kB and only
+      // downloads when someone imports or exports an Excel file. Warn above that, not at 500 kB.
+      chunkSizeWarningLimit: 1000,
+    },
     optimizeDeps: {
       exclude: ["vite"],
     },

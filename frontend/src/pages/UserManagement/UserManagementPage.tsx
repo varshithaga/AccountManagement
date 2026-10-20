@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  Users, Plus, Search, X, Pencil, Trash2, KeyRound, ShieldCheck, RefreshCw, Lock,
+  Plus, Search, X, Pencil, Trash2, KeyRound, ShieldCheck, RefreshCw, Lock,
 } from 'lucide-react'
 import {
   usersApi, rolesApi, apiErrorMessage,

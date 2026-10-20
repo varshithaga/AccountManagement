@@ -56,15 +56,10 @@ export default function CategoryKeywordsPage() {
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [settingsSaved, setSettingsSaved] = useState(false)
 
-  const loadSettings = useCallback(async () => {
-    try {
-      setSettings(await categorizationSettingsApi.get())
-    } catch (e) {
-      console.error('Failed to load categorization settings', e)
-    }
+  useEffect(() => {
+    categorizationSettingsApi.get().then(setSettings)
+      .catch((e) => console.error('Failed to load categorization settings', e))
   }, [])
-
-  useEffect(() => { loadSettings() }, [loadSettings])
 
   const saveSettings = async () => {
     if (!settings) return
@@ -81,14 +76,9 @@ export default function CategoryKeywordsPage() {
     }
   }
 
-  const loadCoaData = useCallback(async () => {
-    try {
-      const tree = await categoryKeywordsApi.coaTree()
-      setCategories((tree as any) || [])
-    } catch (e) {
-      console.error('Failed to load COA tree', e)
-    }
-  }, [])
+  const loadCoaData = useCallback(() => categoryKeywordsApi.coaTree()
+    .then((tree) => setCategories((tree as any) || []))
+    .catch((e) => console.error('Failed to load COA tree', e)), [])
 
   useEffect(() => {
     loadCoaData()

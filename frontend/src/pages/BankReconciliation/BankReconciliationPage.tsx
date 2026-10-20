@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
-  Scale, Wand2, RefreshCw, Link2, Unlink, CheckCircle2, AlertTriangle, Search, X, Settings2, Landmark, BookOpenCheck,
+  Wand2, RefreshCw, Link2, Unlink, CheckCircle2, AlertTriangle, Search, X, Settings2, Landmark, BookOpenCheck,
   Lock, LockOpen, CalendarCheck, Circle,
 } from 'lucide-react'
 import { bankReconciliationApi, apiErrorMessage, type MatchTarget, type ReconStatus } from './bankreconciliationapi'

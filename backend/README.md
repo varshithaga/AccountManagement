@@ -49,6 +49,29 @@ access until an administrator gives them a role.
 - **Uploaded files** are not served publicly: a statement downloads through
   `GET /api/bank-statements/{id}/file/`, which needs a login with the Bank Statements page.
 
+## Several companies
+
+Each company has a database of its own - users, roles, accounts, invoices, everything. The main database
+(`DATABASE_URL`) is the company `default` and also holds the list of the others (the `companies` table).
+
+```bash
+python cli.py create-company acme "Acme Traders"    # creates account_management_acme, migrates it, adds the roles
+python cli.py create-admin admin --company acme      # its first user (or the first sign-up becomes admin)
+python cli.py seed --company acme                    # optional: starter accounts, GST rates ...
+python cli.py companies                              # list them
+```
+
+- The key is 2-40 lowercase letters, digits or `_`, starting with a letter. The database goes next to the
+  main one on the same server (SQLite: `<file>_<key>.db`); pass `--database-url URL` to put it elsewhere.
+- Once there is more than one company, the sign-in page shows a company picker. The frontend sends the
+  choice in the `X-Company` header; the login token carries the company too and is refused in any other.
+- Uploads are kept in `MEDIA_ROOT/<key>/`; `backup` and `run-recurring` (and the server's recurring run) cover
+  every company.
+- **Migrations:** use `python cli.py migrate` - it upgrades the main database and every company's. Plain
+  `alembic upgrade head` only touches `DATABASE_URL`.
+- Companies are added from the command line only; there is no screen for it yet. To take one out of the
+  picker, set `is_active` to false on its row in the main database's `companies` table.
+
 Tests: `pytest tests` (a temporary SQLite file; set `TEST_DATABASE_URL` to a throwaway PostgreSQL database to
 run them there - every test drops and recreates the tables).
 

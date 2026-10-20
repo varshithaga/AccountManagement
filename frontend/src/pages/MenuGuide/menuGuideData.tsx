@@ -2,7 +2,7 @@
 import {
   LayoutDashboard, Folders, Tag, Hash, Landmark, Receipt, ArrowLeftRight, BarChart3, Wallet, Scale,
   GitCompare, BookOpen, FileSpreadsheet, Check, Link2, ListChecks, Users, Lock, Waves,
-  NotebookText, Contact, Truck, Package, FileText, ShoppingCart, HandCoins, Hourglass, Percent, History,
+  NotebookText, Contact, Package, FileText, ShoppingCart, HandCoins, Hourglass, Percent, History,
   Repeat, Boxes, ReceiptIndianRupee,
 } from 'lucide-react'
 import type { PageKey } from '../../access/pages'

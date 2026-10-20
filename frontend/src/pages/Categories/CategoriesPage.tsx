@@ -60,6 +60,8 @@ export default function CategoriesPage() {
       })
       setCategories(data.results || [])
       setCount(data.count || 0)
+      setExpandedCats({})  // every category starts expanded again after a reload
+
     } catch {
       setError('Failed to load chart of accounts categories.')
     }
@@ -72,13 +74,9 @@ export default function CategoriesPage() {
 
   // Totals for the cards and the sidebar: the whole Chart of Accounts, whatever the filters show.
   const [summary, setSummary] = useState<ChartSummary | null>(null)
-  const fetchSummary = useCallback(async () => {
-    try {
-      setSummary(await categoriesApi.summary())
-    } catch {
-      // The totals are only informational - the list itself still works.
-    }
-  }, [])
+  const fetchSummary = useCallback(() => categoriesApi.summary().then(setSummary).catch(() => {
+    // The totals are only informational - the list itself still works.
+  }), [])
 
   useEffect(() => { fetchSummary() }, [fetchSummary])
 
@@ -109,16 +107,7 @@ export default function CategoriesPage() {
     await Promise.all([fetchCategories(), fetchSummary()])
   }, [fetchCategories, fetchSummary])
 
-  // Sync expanded state when categories list updates
-  useEffect(() => {
-    const next: Record<number, boolean> = {}
-    categories.forEach((cat) => {
-      next[cat.id] = true
-    })
-    setExpandedCats(next)
-  }, [categories])
-
-  const isAllExpanded = categories.length > 0 && categories.every((cat) => expandedCats[cat.id])
+  const isAllExpanded = categories.length > 0 && categories.every((cat) => expandedCats[cat.id] !== false)
 
   const toggleExpandAll = () => {
     const next: Record<number, boolean> = {}

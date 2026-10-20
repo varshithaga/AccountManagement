@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import {
-  ArrowLeft, RefreshCw, Link2, UploadCloud, Eye, Landmark, AlertTriangle, Check, CalendarX, Layers, Wallet,
+  ArrowLeft, RefreshCw, UploadCloud, Eye, Landmark, AlertTriangle, Check, CalendarX, Layers, Wallet,
   ChevronDown, Search, X, FileText,
 } from 'lucide-react'
 import { bankStatementsApi } from './bankstatementsapi'
