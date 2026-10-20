@@ -3,7 +3,7 @@
  * enforces access; here they hide menu items and guard routes. */
 
 export type PageKey =
-  | 'dashboard' | 'workflow' | 'menu_guide'
+  | 'dashboard' | 'workflow' | 'menu_guide' | 'ai_assistant'
   | 'categories' | 'category_keywords' | 'bai_codes' | 'bank_accounts'
   | 'bank_statements' | 'statement_continuity' | 'transactions' | 'journal_entries' | 'bank_reconciliation'
   | 'period_close'
@@ -26,6 +26,7 @@ export const PAGE_GROUPS: { title: string; pages: PageDef[] }[] = [
       { key: 'dashboard', label: 'Dashboard', path: '/dashboard' },
       { key: 'workflow', label: 'Workflow', path: '/workflow' },
       { key: 'menu_guide', label: 'Menu Guide', path: '/menu-guide' },
+      { key: 'ai_assistant', label: 'AI Assistant', path: '/ai-assistant' },
     ],
   },
   {

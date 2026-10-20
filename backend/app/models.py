@@ -1181,3 +1181,36 @@ class Company(Base):
     database_url: Mapped[str] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ---------------------------------------------------------------------------
+# AI Assistant
+# ---------------------------------------------------------------------------
+
+class AiConversation(Base):
+    """A chat with the AI Assistant. Each user sees only their own; deleting the user deletes them."""
+    __tablename__ = "ai_conversations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(200), default="")      # the first question, shortened
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    messages: Mapped[list["AiMessage"]] = relationship(
+        back_populates="conversation", cascade="all, delete-orphan", passive_deletes=True, order_by="AiMessage.id")
+
+
+class AiMessage(Base):
+    """One question or answer in an AI Assistant chat."""
+    __tablename__ = "ai_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("ai_conversations.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(20))                     # "user" or "assistant"
+    content: Mapped[str] = mapped_column(Text, default="")
+    provider: Mapped[str] = mapped_column(String(20), default="")    # answers: "gemini" or "openai"
+    tools: Mapped[list[str]] = mapped_column(JSON, default=list)     # answers: the reports it looked up
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    conversation: Mapped[AiConversation] = relationship(back_populates="messages")

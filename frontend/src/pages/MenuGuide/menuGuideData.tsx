@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Folders, Tag, Hash, Landmark, Receipt, ArrowLeftRight, BarChart3, Wallet, Scale,
   GitCompare, BookOpen, FileSpreadsheet, Check, Link2, ListChecks, Users, Lock, Waves,
   NotebookText, Contact, Package, FileText, ShoppingCart, HandCoins, Hourglass, Percent, History,
-  Repeat, Boxes, ReceiptIndianRupee,
+  Repeat, Boxes, ReceiptIndianRupee, Sparkles,
 } from 'lucide-react'
 import type { PageKey } from '../../access/pages'
 
@@ -55,6 +55,15 @@ export const SINGLE_ROLE_MENU: DemoGroup[] = [
         desc: 'Interactive guide and real accounting workflow simulator.',
         explanation: 'The Menu Guide provides a plain-English reference for every section of the application, explaining how Categories, Keywords, Bank Accounts, Statements, and Financial Reports work together with interactive examples.',
         examplesTitle: 'Menu Guide & Learning System',
+      },
+      {
+        id: 'ai_assistant',
+        label: 'AI Assistant',
+        icon: <Sparkles className="h-4 w-4" />,
+        desc: 'Ask questions about your books in plain words and get answers from your own reports.',
+        explanation: 'The AI Assistant answers questions such as "What is our net profit this year?", "Which invoices are overdue?" or "How much GST do we owe for last month?". To answer, it looks up the same reports you see in LedgerDesk (Profit & Loss, Balance Sheet, GST and TDS Summary, aging, invoices, bills, payments, stock, account ledgers) - only those your role can open - and says which ones it used. It can only read: it never creates, changes or deletes anything. Chats are saved for you alone and can be deleted. Answers are written by Google Gemini, or OpenAI when Gemini is unavailable, so the figures it looks up are sent to that service; an administrator decides which roles get this page. AI can make mistakes - check important figures in the reports.',
+        examplesTitle: 'Asking the AI Assistant',
+        requiresPage: 'ai_assistant',
       },
     ],
   },

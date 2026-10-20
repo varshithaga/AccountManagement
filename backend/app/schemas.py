@@ -432,3 +432,9 @@ class ReminderIn(Body):
     message: Optional[str] = None
     # False: the reminder was sent some other way (phone, WhatsApp) - only record it
     send_email: bool = True
+
+
+class AiChatIn(Body):
+    """A question to the AI Assistant - in an existing chat, or (no conversation) a new one."""
+    message: str = Field(min_length=1, max_length=4000)
+    conversation: Optional[int] = None

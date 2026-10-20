@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     # Folder with pg_dump / pg_restore when they are not on PATH, e.g. "C:/Program Files/PostgreSQL/18/bin"
     pg_bin_dir: str = ""
 
+    # AI Assistant: a read-only chat about the books. Gemini is asked first; OpenAI answers when Gemini
+    # fails (error, quota, timeout) or has no key. Leave both keys empty to turn the assistant off.
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+    openai_api_key: str = ""
+    openai_model: str = "gpt-5-mini"
+    ai_timeout_seconds: int = 60
+
     @field_validator("secret_key")
     @classmethod
     def _not_placeholder(cls, value: str) -> str:
@@ -54,6 +62,11 @@ class Settings(BaseSettings):
     @property
     def email_configured(self) -> bool:
         return bool(self.smtp_host and (self.smtp_from or self.smtp_username))
+
+    @property
+    def ai_providers(self) -> list[str]:
+        """The AI services with a key, in the order they are tried."""
+        return [name for name, key in (("gemini", self.gemini_api_key), ("openai", self.openai_api_key)) if key]
 
     @property
     def cors_origins(self) -> list[str]:

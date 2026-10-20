@@ -8,6 +8,8 @@ PyJWT==2.15.1
 bcrypt==5.0.0
 python-multipart==0.0.32
 alembic==1.20.0
+# Calls to the AI services (Gemini / OpenAI) - and the API in tests
+httpx==0.28.1
 
 # Bank statement parsing (Excel / PDF / CSV)
 pandas==3.0.6
@@ -20,4 +22,3 @@ psycopg[binary]==3.3.6
 
 # Tests
 pytest==9.1.1
-httpx==0.28.1

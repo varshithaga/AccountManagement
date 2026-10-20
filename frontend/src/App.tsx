@@ -41,6 +41,7 @@ const TdsSummaryPage = lazy(() => import('./pages/TdsSummary/TdsSummaryPage'))
 const InventoryPage = lazy(() => import('./pages/Inventory/InventoryPage'))
 const RecurringInvoicesPage = lazy(() => import('./pages/Billing/RecurringInvoicesPage'))
 const AuditLogPage = lazy(() => import('./pages/AuditLog/AuditLogPage'))
+const AiAssistantPage = lazy(() => import('./pages/AiAssistant/AiAssistantPage'))
 
 export default function App() {
   return (
@@ -60,6 +61,7 @@ export default function App() {
             <Route path="/dashboard" element={<RequirePage page="dashboard"><DashboardPage /></RequirePage>} />
             <Route path="/workflow" element={<RequirePage page="workflow"><WorkflowPage /></RequirePage>} />
             <Route path="/menu-guide" element={<RequirePage page="menu_guide"><MenuGuidePage /></RequirePage>} />
+            <Route path="/ai-assistant" element={<RequirePage page="ai_assistant"><AiAssistantPage /></RequirePage>} />
             <Route path="/categories" element={<RequirePage page="categories"><CategoriesPage /></RequirePage>} />
             <Route path="/category-keywords" element={<RequirePage page="category_keywords"><CategoryKeywordsPage /></RequirePage>} />
             <Route path="/bai-codes" element={<RequirePage page="bai_codes"><BaiCodesPage /></RequirePage>} />

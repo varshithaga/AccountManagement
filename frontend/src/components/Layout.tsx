@@ -6,7 +6,7 @@ import {
   Moon, Sun, X, BookOpen, Link2, ListChecks, BookOpenCheck, GitMerge, Users,
   ChevronDown, Settings, Lock, Waves, NotebookText, FlaskConical,
   Contact, Truck, Package, FileText, ShoppingCart, HandCoins, Hourglass, Percent, History,
-  Repeat, Boxes, ReceiptIndianRupee,
+  Repeat, Boxes, ReceiptIndianRupee, Sparkles,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { ALL_PAGES, PAGE_GROUPS, type PageKey } from '../access/pages'
@@ -62,6 +62,7 @@ const PAGE_ICONS: Record<PageKey, React.ReactNode> = {
   reports_comparison: <GitCompare className={ICON} />,
   gst_summary: <Percent className={ICON} />,
   tds_summary: <ReceiptIndianRupee className={ICON} />,
+  ai_assistant: <Sparkles className={ICON} />,
   user_management: <Users className={ICON} />,
   audit_log: <History className={ICON} />,
 }

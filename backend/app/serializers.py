@@ -543,3 +543,19 @@ def payment(p: Payment) -> dict:
         'journal_entry_number': p.journal_entry.entry_number if p.journal_entry else None,
         'created_by': p.created_by.username if p.created_by else None, 'created_at': iso(p.created_at),
     }
+
+
+# ---------------------------------------------------------------------------
+# AI Assistant
+# ---------------------------------------------------------------------------
+
+def ai_message(m) -> dict:
+    return {'id': m.id, 'role': m.role, 'content': m.content, 'provider': m.provider, 'tools': m.tools or [],
+            'created_at': iso(m.created_at)}
+
+
+def ai_conversation(c, messages: bool = False) -> dict:
+    data = {'id': c.id, 'title': c.title, 'created_at': iso(c.created_at), 'updated_at': iso(c.updated_at)}
+    if messages:
+        data['messages'] = [ai_message(m) for m in c.messages]
+    return data

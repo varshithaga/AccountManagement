@@ -72,6 +72,28 @@ python cli.py companies                              # list them
 - Companies are added from the command line only; there is no screen for it yet. To take one out of the
   picker, set `is_active` to false on its row in the main database's `companies` table.
 
+## AI Assistant
+
+A chat (sidebar → AI Assistant) that answers questions about the books: "net profit this year?", "which
+invoices are overdue?", "GST payable for last month?". Set it up in `.env`:
+
+```
+GEMINI_API_KEY=...        # asked first
+OPENAI_API_KEY=...        # answers when Gemini fails (error, quota, timeout) - optional
+GEMINI_MODEL=gemini-2.5-flash
+OPENAI_MODEL=gpt-5-mini
+```
+
+- **Read-only by construction** (`app/services/ai_assistant.py`): the model can only call a fixed list of
+  tools, and each tool is a GET to one of our own report / list endpoints, sent in-process with the asking
+  user's own token. So the figures are the screens' figures, the role limits what it can look up exactly as
+  on the screens, and nothing can be created or changed.
+- **Access:** the `ai_assistant` page. Admin roles have it; give it to other roles in User Management. The
+  figures it looks up are sent to Google / OpenAI, so decide per role.
+- **Chats** are saved per user (`ai_conversations`, `ai_messages`); a user sees and deletes only their own.
+  A question that gets no answer is not saved.
+- Tests replace the AI services with a fake (`PROVIDER_TRANSPORT`) - no key or network needed.
+
 Tests: `pytest tests` (a temporary SQLite file; set `TEST_DATABASE_URL` to a throwaway PostgreSQL database to
 run them there - every test drops and recreates the tables).
 
@@ -83,7 +105,7 @@ run them there - every test drops and recreates the tables).
 | `app/schemas.py` | Request bodies (Pydantic) |
 | `app/serializers.py` | Response shapes |
 | `app/access.py`, `app/deps.py` | Pages, roles and the `Access(...)` permission dependency |
-| `app/services/` | Business logic: statement parsing, categorization, transfers, duplicates, continuity, journal import, reconciliation, period close, reports, invoicing, GST summary, audit log |
+| `app/services/` | Business logic: statement parsing, categorization, transfers, duplicates, continuity, journal import, reconciliation, period close, reports, invoicing, GST summary, audit log, AI assistant |
 | `app/routers/` | Endpoints, one file per area |
 | `cli.py` | Setup commands |
 
@@ -105,6 +127,7 @@ run them there - every test drops and recreates the tables).
 - **Reports** `reports/profit-and-loss|balance-sheet|trial-balance|cash-flow|account-ledger|comparison|comparison/export|financial-pack|line-item-transactions|receivables-aging|payables-aging|gst-summary/`
 - **Period close** `period-close/` (financial year, default receivable / payable / cash accounts, company details), `period-close/readiness|close|reopen|company/`
 - **Audit log** `audit-log/` (+ `filters/`)
+- **AI Assistant** `ai/status/`, `ai/chat/`, `ai/conversations/` (+ `{id}/`)
 - **Dashboard** `dashboard/overview|kpis|cash-position|attention|top-expenses|recent-statements|cash-flow-forecast|reconciliation-status/`, `workflow/status/`
 
 ## Reports come from the books (the journal)

@@ -911,7 +911,7 @@ export default function MenuGuidePage() {
                   <div className="space-y-3">
                     {[
                       { role: 'Admin', tag: 'Fixed', pages: ['All pages, including User Management'] },
-                      { role: 'Accountant', tag: 'Editable', pages: ['Everything except User Management and the Audit Log'] },
+                      { role: 'Accountant', tag: 'Editable', pages: ['Everything except User Management, the Audit Log and the AI Assistant'] },
                       { role: 'Bookkeeper', tag: 'Editable', pages: ['Bank Statements', 'General Ledger', 'Journal Entries', 'Invoices, Bills & Payments', 'Bank Reconciliation'] },
                       { role: 'Viewer', tag: 'Editable', pages: ['Dashboard', 'Profit & Loss', 'Balance Sheet', 'Trial Balance', 'GST Summary'] },
                     ].map((r) => (
