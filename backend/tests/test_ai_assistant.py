@@ -162,8 +162,26 @@ def test_access_follows_the_role(admin, keys, fake):
     r = admin.post("/api/ai/chat/", json={"message": "List invoices"}, headers=reports)
     assert r.status_code == 200, r.text
     result = fake_ai.body(1)["contents"][-1]["parts"][0]["functionResponse"]["response"]["result"]
-    assert "no tool" in result
+    assert "No permission" in result and "Sales Invoices" in result
     assert r.json()["messages"][1]["tools"] == []
+
+
+def test_pages_the_role_cannot_open_are_refused(admin, keys, fake):
+    """AI Assistant + General Ledger but no Profit & Loss: P&L questions get a permission answer, never figures."""
+    clerk = _user_with_role(admin, "bookclerk", ["ai_assistant", "transactions"])
+    tools = admin.get("/api/ai/status/", headers=clerk).json()["tools"]
+    assert "search_transactions" in tools
+    assert not {"profit_and_loss", "balance_sheet", "compare_periods", "dashboard_overview"} & set(tools)
+
+    fake_ai = fake(gemini_call("profit_and_loss", {"period": "this_year"}), gemini_text("No permission."))
+    r = admin.post("/api/ai/chat/", json={"message": "What is our net profit?"}, headers=clerk)
+    assert r.status_code == 200, r.text
+    system = fake_ai.body(0)["systemInstruction"]["parts"][0]["text"]
+    blocked = system.split("cannot open these pages:")[1].split(".")[0]
+    assert "Profit & Loss" in blocked and "Balance Sheet" in blocked and "General Ledger" not in blocked
+    result = fake_ai.body(1)["contents"][-1]["parts"][0]["functionResponse"]["response"]["result"]
+    assert "No permission" in result and "Profit & Loss" in result
+    assert r.json()["messages"][1]["tools"] == []  # nothing was looked up
 
 
 def test_chats_are_kept_per_user(admin, keys, fake):
