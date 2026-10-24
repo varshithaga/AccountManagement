@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     # AI Assistant: a read-only chat about the books. Gemini is asked first; OpenAI answers when Gemini
     # fails (error, quota, timeout) or has no key. Leave both keys empty to turn the assistant off.
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.8-flash"
     openai_api_key: str = ""
     openai_model: str = "gpt-5-mini"
     ai_timeout_seconds: int = 60

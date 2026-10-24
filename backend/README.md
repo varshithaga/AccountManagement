@@ -82,7 +82,7 @@ invoices are overdue?", "GST payable for last month?". Set it up in `.env`:
 ```
 GEMINI_API_KEY=...        # asked first
 OPENAI_API_KEY=...        # answers when Gemini fails (error, quota, timeout) - optional
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.8-flash
 OPENAI_MODEL=gpt-5-mini
 ```
 
