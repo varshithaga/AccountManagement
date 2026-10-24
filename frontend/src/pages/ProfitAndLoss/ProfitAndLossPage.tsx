@@ -434,7 +434,7 @@ export default function ProfitAndLossPage() {
 
             {!sectionFilter && (
               <div
-                className={`rounded-2xl border border-slate-200 bg-gradient-to-br to-white p-5 dark:border-white/10 dark:to-slate-900/40 ${isProfit ? 'from-emerald-50 dark:from-emerald-500/15' : 'from-rose-50 dark:from-rose-500/15'
+                className={`rounded-2xl border border-slate-200 p-5 dark:border-white/10 ${isProfit ? 'bg-success-soft' : 'bg-danger-soft'
                   }`}
               >
                 <p className="text-xs font-bold uppercase tracking-wide text-muted">

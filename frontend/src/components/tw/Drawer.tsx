@@ -29,7 +29,7 @@ export function Drawer({
   return (
     <div className="fixed inset-0 z-[60]">
       <div
-        className={`absolute inset-0 bg-[rgba(10,26,58,0.62)] transition-opacity duration-200 ${visible ? 'opacity-100' : 'opacity-0'}`}
+        className={`absolute inset-0 bg-overlay transition-opacity duration-200 ${visible ? 'opacity-100' : 'opacity-0'}`}
         onClick={onClose}
       />
       <div

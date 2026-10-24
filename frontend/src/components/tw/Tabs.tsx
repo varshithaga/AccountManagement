@@ -15,7 +15,7 @@ export function Tabs<T extends string>({
           onClick={() => onChange(opt.value)}
           className={`rounded-[9px] px-4 py-1.5 text-sm font-semibold transition-colors ${
             value === opt.value
-              ? 'bg-surface text-ink shadow-[0_1px_2px_rgb(10_26_58/0.08)] ring-1 ring-border'
+              ? 'bg-surface text-ink shadow-[0_1px_2px_rgb(11_46_43/0.08)] ring-1 ring-border'
               : 'text-muted hover:text-ink'
           }`}
         >

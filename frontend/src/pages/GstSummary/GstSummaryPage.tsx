@@ -8,6 +8,7 @@ import { REPORT_PERIOD_OPTIONS, formatMoney, type ReportPeriod } from '../../uti
 import { errorText, gstApi } from '../Billing/billingapi'
 import type { GstDocument, GstParams, GstRateRow, GstSummary, GstTotals } from '../Billing/billingapi'
 import { TABLE_HEAD_ROW, TABLE_ROW, TD, TH, formatDate } from '../Billing/billingParts'
+import GstReturnsPanel from './GstReturnsPanel'
 
 type View = 'rates' | 'supplies' | 'hsn' | 'documents'
 
@@ -94,6 +95,8 @@ export default function GstSummaryPage() {
           Set it under <Link to="/period-close" className="font-bold underline">Period Close → Company details</Link>.
         </div>
       )}
+
+      <GstReturnsPanel />
 
       {awaitingDates ? (
         <Panel><EmptyState icon={<Percent />} title="Pick both dates of the custom range." /></Panel>

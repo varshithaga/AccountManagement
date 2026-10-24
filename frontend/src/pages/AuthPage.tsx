@@ -1,12 +1,13 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
-  Eye, EyeOff, Lock, User, Mail, IdCard, CheckCircle2, ArrowRight, BarChart3, Tag, FileSearch, Copy, Building2,
+  Eye, EyeOff, Lock, User, Mail, IdCard, CheckCircle2, ArrowRight, Tag, FileSearch, Copy, Building2,
 } from 'lucide-react'
 import api from '../api/client'
 import { DEFAULT_COMPANY, companyStore, type CompanyOption } from '../access/company'
 import { useAuth } from '../context/AuthContext'
 import { Spinner, Tabs } from '../components/tw'
+import { LogoMark } from '../components/Logo'
 
 interface AuthPageProps {
   initialMode?: 'login' | 'signup'
@@ -31,7 +32,7 @@ function Field({ id, label, icon, children }: { id: string; label: string; icon:
 function MiniStat({ icon, value, label }: { icon: ReactNode; value: ReactNode; label: string }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-sidebar-raised p-4">
-      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.07] text-mint">{icon}</span>
+      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.07] text-highlight">{icon}</span>
       <p className="mt-3 text-[15px] font-semibold text-white">{value}</p>
       <p className="mt-0.5 text-xs text-sidebar-label">{label}</p>
     </div>
@@ -147,8 +148,8 @@ export default function AuthPage({ initialMode }: AuthPageProps) {
       <section className="nav-rail relative hidden flex-col justify-between gap-10 overflow-y-auto px-10 py-10 md:flex md:w-1/2 lg:px-14 lg:py-12">
         <div>
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-white">
-              <BarChart3 className="h-5 w-5" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-on-primary">
+              <LogoMark className="h-5 w-5" />
             </div>
             <div>
               <p className="font-display text-lg font-bold leading-tight text-white">LedgerDesk</p>
@@ -156,8 +157,8 @@ export default function AuthPage({ initialMode }: AuthPageProps) {
             </div>
           </div>
 
-          <span className="mt-12 inline-flex items-center gap-2 rounded-full bg-[#15306A] px-3.5 py-1.5 text-[13px] font-semibold text-mint">
-            <span className="h-1.5 w-1.5 rounded-full bg-mint" />
+          <span className="mt-12 inline-flex items-center gap-2 rounded-full bg-sidebar-active px-3.5 py-1.5 text-[13px] font-semibold text-highlight">
+            <span className="h-1.5 w-1.5 rounded-full bg-highlight" />
             Automated bank statement processing
           </span>
 
@@ -208,8 +209,8 @@ export default function AuthPage({ initialMode }: AuthPageProps) {
         <div className="w-full max-w-[420px] rounded-[22px] border border-border bg-surface p-7 sm:p-8">
           {/* Brand on phones, where the left panel is hidden */}
           <div className="mb-6 flex items-center gap-2.5 md:hidden">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white">
-              <BarChart3 className="h-[18px] w-[18px]" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-on-primary">
+              <LogoMark className="h-[18px] w-[18px]" />
             </div>
             <p className="font-display text-base font-bold text-ink">LedgerDesk</p>
           </div>
@@ -343,7 +344,7 @@ export default function AuthPage({ initialMode }: AuthPageProps) {
             <button
               type="submit"
               disabled={loading}
-              className="mt-1 flex h-12 items-center justify-center gap-2 rounded-xl bg-primary text-[15px] font-semibold text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-1 flex h-12 items-center justify-center gap-2 rounded-xl bg-primary text-[15px] font-semibold text-on-primary transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading
                 ? <Spinner size={20} className="border-white/40 border-t-white" />

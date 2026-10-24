@@ -53,8 +53,8 @@ def _rate_key(item) -> tuple:
     return (rate.rate if rate else ZERO, rate.name if rate else 'No GST')
 
 
-def gst_summary(db: Session, date_from: Optional[str] = None, date_to: Optional[str] = None) -> dict:
-    settings = accounting_settings(db)
+def posted_documents(db: Session, date_from: Optional[str] = None, date_to: Optional[str] = None) -> tuple:
+    """(invoices, bills, notes) posted in the period, with their lines, tax rates, products and parties."""
     invoices = db.scalars(select(SalesInvoice).where(SalesInvoice.status.in_(POSTED),
                                                      *_in_range(SalesInvoice.invoice_date, date_from, date_to))
                           .options(*_with_items(SalesInvoice.items, SalesInvoiceItem), selectinload(SalesInvoice.client))
@@ -69,6 +69,12 @@ def gst_summary(db: Session, date_from: Optional[str] = None, date_to: Optional[
                                 selectinload(CreditNote.sales_invoice).selectinload(SalesInvoice.client),
                                 selectinload(CreditNote.purchase_bill).selectinload(PurchaseBill.supplier))
                        .order_by(CreditNote.note_date, CreditNote.id)).all()
+    return invoices, bills, notes
+
+
+def gst_summary(db: Session, date_from: Optional[str] = None, date_to: Optional[str] = None) -> dict:
+    settings = accounting_settings(db)
+    invoices, bills, notes = posted_documents(db, date_from, date_to)
 
     outward, inward, itc = _blank(), _blank(), _blank()
     out_rates: dict = OrderedDict()

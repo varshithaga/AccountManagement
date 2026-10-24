@@ -8,11 +8,12 @@ from sqlalchemy import exists, func, not_, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from .. import serializers as ser
-from ..access import CREATE, DELETE, EDIT
+from ..access import CREATE, DELETE, EDIT, is_admin
+from ..config import get_settings
 from ..database import get_db
-from ..deps import Access
+from ..deps import Access, get_current_user
 from ..errors import APIError, bad_request, not_found
-from ..models import BankAccount, JournalEntry, JournalEntryLine, JournalImportBatch, SubCategory
+from ..models import BankAccount, JournalEntry, JournalEntryLine, JournalImportBatch, SubCategory, User
 from ..schemas import JournalImportIn, ManualEntryIn, MonthScopeIn
 from ..services import period_close
 from ..services import reconciliation as recon
@@ -26,6 +27,15 @@ from .common import confirm_unmatch, period_guard, reconcile_guard
 
 router = APIRouter(prefix="/api", tags=["journal entries"])
 journal_access = Access("journal_entries")
+
+
+def testing_tools_access(user: User = Depends(get_current_user)) -> User:
+    """The testing tools (month-scope / month-delete): only with TESTING_TOOLS on, and only for admins."""
+    if not get_settings().testing_tools:
+        raise not_found("The testing tools are turned off (TESTING_TOOLS in backend/.env).")
+    if not is_admin(user):
+        raise APIError(403, {"detail": "Only an administrator can use the testing tools."})
+    return user
 
 
 def _line_exists(*where):
@@ -194,7 +204,7 @@ def _month_scope(db: Session, params: dict):
     return bank, stmt
 
 
-@router.get("/journal-entries/month-scope/", dependencies=[Depends(journal_access)])
+@router.get("/journal-entries/month-scope/", dependencies=[Depends(testing_tools_access), Depends(journal_access)])
 def month_scope(request: Request, db: Session = Depends(get_db)):
     """Preview: what month-delete would remove, plus a per-month entry count for the bank."""
     params = dict(request.query_params)
@@ -242,7 +252,8 @@ def _delete_entries(db: Session, entry_ids: list[int], confirm: bool, what: str 
     recon.drop_partial_matches(db, matched)
 
 
-@router.post("/journal-entries/month-delete/", dependencies=[Depends(Access("journal_entries", action=DELETE))])
+@router.post("/journal-entries/month-delete/",
+             dependencies=[Depends(testing_tools_access), Depends(Access("journal_entries", action=DELETE))])
 def month_delete(body: MonthScopeIn, request: Request, db: Session = Depends(get_db)):
     """Deletes every entry month-scope lists, with the same guards as a single delete. Imports left with
     no entries are removed too, so the files can be imported again."""

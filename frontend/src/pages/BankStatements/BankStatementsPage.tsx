@@ -906,7 +906,7 @@ export default function BankStatementsPage() {
               accept=".csv,.xlsx,.xls,.pdf"
               onChange={(e) => handleFileSelect(e.target.files?.[0] || null)}
             />
-            <span className="mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-surface text-primary shadow-[0_1px_2px_rgb(10_26_58/0.08)]"><UploadCloud className="h-6 w-6 stroke-[1.8]" /></span>
+            <span className="mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-surface text-primary shadow-[0_1px_2px_rgb(11_46_43/0.08)]"><UploadCloud className="h-6 w-6 stroke-[1.8]" /></span>
             <p className="text-sm font-bold text-ink">
               {file ? file.name : 'Click or Drag & Drop Statement File'}
             </p>

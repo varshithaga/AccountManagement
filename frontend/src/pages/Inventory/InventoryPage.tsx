@@ -4,6 +4,7 @@ import { AlertTriangle, Boxes, History, IndianRupee, PackagePlus, RefreshCw, Sli
 import { useAuth } from '../../context/AuthContext'
 import { Alert, Button, Chip, DateField, Drawer, IconButton, Modal, Panel, Select, Spinner, Switch, TextField } from '../../components/tw'
 import { EmptyState, KpiTile, PageHeader, RowAction, SearchBox } from '../../components/PageParts'
+import Pagination, { DEFAULT_ROWS_PER_PAGE, clampPage, paginate } from '../../components/Pagination'
 import { formatMoney } from '../../utils/periods'
 import { errorText, inventoryApi } from '../Billing/billingapi'
 import type { ProductMovements, StockItem, StockMovementKind, StockSummary } from '../Billing/billingapi'
@@ -33,6 +34,8 @@ export default function InventoryPage() {
   const [lowOnly, setLowOnly] = useState(false)
   const [viewing, setViewing] = useState<StockItem | null>(null)
   const [adjusting, setAdjusting] = useState<{ product: number | null; opening: boolean } | null>(null)
+  const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(DEFAULT_ROWS_PER_PAGE)
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
@@ -52,7 +55,9 @@ export default function InventoryPage() {
     return () => { clearTimeout(handle); controller.abort() }
   }, [load])
 
+  // The whole list comes at once (the tiles and the Adjust dialog need every product); it is paged here.
   const rows = (data?.products ?? []).filter((p) => !lowOnly || p.below_reorder_level || p.negative)
+  const pageRows = paginate(rows, clampPage(page, rowsPerPage, rows.length), rowsPerPage)
 
   return (
     <div className="flex flex-col gap-6">
@@ -82,10 +87,10 @@ export default function InventoryPage() {
       </div>
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-        <SearchBox value={search} onChange={setSearch} placeholder="Search by name, code or HSN…" className="flex-1" />
+        <SearchBox value={search} onChange={(v) => { setSearch(v); setPage(0) }} placeholder="Search by name, code or HSN…" className="flex-1" />
         <DateField id="stock-as-of" label="" value={asOf} onChange={setAsOf} className="lg:w-48" />
         {asOf && <Button variant="text" size="sm" onClick={() => setAsOf('')}>Today</Button>}
-        <Switch checked={lowOnly} onChange={setLowOnly} label="Low / negative only" />
+        <Switch checked={lowOnly} onChange={(v) => { setLowOnly(v); setPage(0) }} label="Low / negative only" />
       </div>
 
       <Panel className="overflow-hidden p-0">
@@ -110,7 +115,7 @@ export default function InventoryPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((p) => (
+                {pageRows.map((p) => (
                   <tr key={p.product} className={TABLE_ROW}>
                     <td className={TD}>
                       <button type="button" className="font-semibold text-primary hover:underline" onClick={() => setViewing(p)}>{p.name}</button>
@@ -140,6 +145,8 @@ export default function InventoryPage() {
                 ))}
               </tbody>
             </table>
+            <Pagination count={rows.length} page={page} rowsPerPage={rowsPerPage} onPageChange={setPage}
+              onRowsPerPageChange={(r) => { setRowsPerPage(r); setPage(0) }} />
           </div>
         )}
       </Panel>
@@ -165,18 +172,23 @@ function MovementsDrawer({ item, canDelete, onClose, onChanged }: {
   const [error, setError] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(DEFAULT_ROWS_PER_PAGE)
 
   const reload = useCallback(() => {
-    inventoryApi.movements(item.product, { date_from: dateFrom || undefined, date_to: dateTo || undefined })
-      .then(setData).catch((err) => setError(errorText(err, 'Failed to load the movements.')))
-  }, [item.product, dateFrom, dateTo])
+    inventoryApi.movements(item.product, {
+      date_from: dateFrom || undefined, date_to: dateTo || undefined, page: page + 1, limit: rowsPerPage,
+    }).then(setData).catch((err) => setError(errorText(err, 'Failed to load the movements.')))
+  }, [item.product, dateFrom, dateTo, page, rowsPerPage])
   useEffect(reload, [reload])
 
   const remove = async (id: number) => {
     if (!window.confirm('Delete this adjustment? The stock goes back to what it was without it.')) return
     try {
       await inventoryApi.removeAdjustment(id)
-      reload()
+      // The last row of the last page: go back a page (changing the page reloads), else reload this one.
+      if (page > 0 && data?.rows.length === 1) setPage(page - 1)
+      else reload()
       onChanged()
     } catch (err) {
       alert(errorText(err, 'Failed to delete the adjustment.'))
@@ -194,8 +206,8 @@ function MovementsDrawer({ item, canDelete, onClose, onChanged }: {
       </div>}>
       {error && <Alert>{error}</Alert>}
       <div className="mb-4 grid grid-cols-2 gap-3">
-        <DateField id="mv-from" label="From" value={dateFrom} onChange={setDateFrom} />
-        <DateField id="mv-to" label="To" value={dateTo} onChange={setDateTo} min={dateFrom || undefined} />
+        <DateField id="mv-from" label="From" value={dateFrom} onChange={(v) => { setDateFrom(v); setPage(0) }} />
+        <DateField id="mv-to" label="To" value={dateTo} onChange={(v) => { setDateTo(v); setPage(0) }} min={dateFrom || undefined} />
       </div>
       {!data && !error && <div className="flex justify-center p-10"><Spinner size={28} /></div>}
       {data && (
@@ -250,6 +262,8 @@ function MovementsDrawer({ item, canDelete, onClose, onChanged }: {
                   })}
                 </tbody>
               </table>
+              <Pagination count={data.count} page={data.current_page - 1} rowsPerPage={rowsPerPage} onPageChange={setPage}
+                onRowsPerPageChange={(r) => { setRowsPerPage(r); setPage(0) }} />
             </div>
           )}
           <div className="flex justify-between rounded-xl bg-surface-muted px-4 py-3 text-sm font-bold">

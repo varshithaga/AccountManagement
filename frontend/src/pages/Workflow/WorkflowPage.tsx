@@ -217,7 +217,7 @@ function buildSteps(s: WorkflowStatus): Step[] {
         'Profit & Loss - income minus expenses for a period.',
         'Balance Sheet - assets = liabilities + equity at a date.',
         'Trial Balance - the balance of every account; debits = credits.',
-        'GST Summary - output GST, input credit and the net payable, split CGST / SGST / IGST.',
+        'GST Summary - output GST, input credit and the net payable, split CGST / SGST / IGST; download GSTR-1 / GSTR-3B JSON for a month.',
         'TDS Summary - TDS kept back by section and supplier (with PAN), paid and still to pay.',
         'Period Comparison - two periods side by side. Every report exports to Excel.',
       ],
@@ -236,10 +236,10 @@ function buildSteps(s: WorkflowStatus): Step[] {
 }
 
 const STATE_STYLE: Record<StepState, { label: string; chip: string; ring: string; icon: React.ReactNode }> = {
-  done: { label: 'Done', chip: 'bg-emerald-500/15 text-success-text', ring: 'bg-emerald-500 text-white', icon: <CircleCheck className="h-3.5 w-3.5" /> },
+  done: { label: 'Done', chip: 'bg-emerald-500/15 text-success-text', ring: 'bg-emerald-700 text-white', icon: <CircleCheck className="h-3.5 w-3.5" /> },
   todo: { label: 'To do', chip: 'bg-violet-500/15 text-primary', ring: 'bg-violet-600 text-white', icon: <CircleDashed className="h-3.5 w-3.5" /> },
-  attention: { label: 'Needs attention', chip: 'bg-amber-500/15 text-warning-text', ring: 'bg-amber-500 text-white', icon: <AlertTriangle className="h-3.5 w-3.5" /> },
-  optional: { label: 'Optional', chip: 'bg-slate-500/15 text-muted', ring: 'bg-slate-400 text-white', icon: <CircleDashed className="h-3.5 w-3.5" /> },
+  attention: { label: 'Needs attention', chip: 'bg-amber-500/15 text-warning-text', ring: 'bg-orange-700 text-white', icon: <AlertTriangle className="h-3.5 w-3.5" /> },
+  optional: { label: 'Optional', chip: 'bg-slate-500/15 text-muted', ring: 'bg-slate-500 text-white', icon: <CircleDashed className="h-3.5 w-3.5" /> },
   waiting: { label: 'After upload', chip: 'bg-slate-500/10 text-muted', ring: 'bg-slate-300 text-muted dark:bg-slate-700 ', icon: <Hourglass className="h-3.5 w-3.5" /> },
   info: { label: 'Any time', chip: 'bg-info/15 text-info-text', ring: 'bg-info text-white', icon: <BarChart3 className="h-3.5 w-3.5" /> },
 }

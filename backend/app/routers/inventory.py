@@ -24,9 +24,11 @@ def stock(as_of: Optional[str] = None, search: Optional[str] = None, db: Session
 
 @router.get("/{product_id:int}/movements/", dependencies=[Depends(view)])
 def product_movements(product_id: int, date_from: Optional[str] = None, date_to: Optional[str] = None,
-                      db: Session = Depends(get_db)):
-    """One product's movements, oldest first, with the running stock."""
-    return inventory.movements(db, get_or_404(db, Product, product_id), parse_date(date_from), parse_date(date_to))
+                      page: Optional[str] = None, limit: Optional[str] = None, db: Session = Depends(get_db)):
+    """One product's movements, oldest first, with the running stock - a page at a time (?page=, ?limit=,
+    default 50 rows)."""
+    return inventory.movements(db, get_or_404(db, Product, product_id), parse_date(date_from), parse_date(date_to),
+                               page=page or 1, limit=limit)
 
 
 @router.post("/adjustments/", status_code=201)

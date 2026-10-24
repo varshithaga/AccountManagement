@@ -419,3 +419,26 @@ def test_email_not_configured(admin, monkeypatch):
     assert admin.get("/api/email/status/").json()["configured"] is False
     r = admin.post(f"/api/sales-invoices/{inv['id']}/email/", data={"to": "a@b.test"})
     assert r.status_code == 400 and "not set up" in r.text
+
+
+def test_inventory_movements_paged(admin):
+    widget = admin.post("/api/products/", json={"name": "Bolt", "unit": "Nos", "track_inventory": True}).json()
+    for day, quantity in enumerate(["10", "-3", "5", "-1", "2"]):  # running: 10, 7, 12, 11, 13
+        assert admin.post("/api/inventory/adjustments/", json={
+            "product": widget["id"], "quantity": quantity, "movement_date": d(day)}).status_code == 201
+    url = f"/api/inventory/{widget['id']}/movements/"
+
+    first = admin.get(url, params={"limit": 2}).json()
+    assert (first["count"], first["total_pages"], first["current_page"], first["next"]) == (5, 3, 1, 2)
+    assert [r["balance"] for r in first["rows"]] == [10, 7]
+    assert first["opening"] == 0 and first["closing"] == 13  # opening / closing are for the whole range
+
+    second = admin.get(url, params={"limit": 2, "page": 2}).json()
+    assert [r["balance"] for r in second["rows"]] == [12, 11]  # carries on from page 1
+    last = admin.get(url, params={"limit": 2, "page": "last"}).json()
+    assert [r["balance"] for r in last["rows"]] == [13] and last["previous"] == 2
+    assert admin.get(url, params={"limit": 2, "page": 4}).status_code == 404
+
+    # A date range: opening is what came before it, and the balance runs from there.
+    ranged = admin.get(url, params={"date_from": d(2), "limit": 2, "page": 2}).json()
+    assert ranged["opening"] == 7 and ranged["count"] == 3 and [r["balance"] for r in ranged["rows"]] == [13]

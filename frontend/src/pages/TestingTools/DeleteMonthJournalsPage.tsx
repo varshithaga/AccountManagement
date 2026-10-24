@@ -111,7 +111,7 @@ export default function DeleteMonthJournalsPage() {
                     onClick={() => { setMonth(m.month); setDone('') }}
                     className={`rounded-xl border px-3 py-2 text-[13px] font-semibold transition-colors ${
                       month === m.month
-                        ? 'border-primary bg-primary text-white'
+                        ? 'border-primary bg-primary text-on-primary'
                         : 'border-border bg-surface text-ink hover:bg-surface-muted'}`}
                   >
                     {monthLabel(m.month)} <span className={month === m.month ? 'text-white/80' : 'text-muted'}>· {m.count}</span>
@@ -122,7 +122,7 @@ export default function DeleteMonthJournalsPage() {
                     type="button"
                     onClick={() => { setMonth(''); setDone('') }}
                     className={`rounded-xl border px-3 py-2 text-[13px] font-semibold transition-colors ${
-                      !month ? 'border-primary bg-primary text-white' : 'border-border bg-surface text-ink hover:bg-surface-muted'}`}
+                      !month ? 'border-primary bg-primary text-on-primary' : 'border-border bg-surface text-ink hover:bg-surface-muted'}`}
                   >
                     All months
                   </button>

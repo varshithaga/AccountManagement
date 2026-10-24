@@ -5,71 +5,77 @@
 @custom-variant dark (&:where(.dark-mode, .dark-mode *));
 
 /* ============================================================================================
-   "Navy & Saffron" design tokens - the one place colours are defined.
+   "Deep Teal & Amber" design tokens - the one place colours are defined.
    Components use them through the Tailwind names mapped below (bg-surface, text-muted,
    bg-primary, text-success-text, ...). The violet / slate / emerald / rose / amber / orange
    scales are re-tuned to the same palette, so screens not yet moved to the token names
    follow along.
    ============================================================================================ */
 :root {
-  --sidebar-bg: #0A1A3A;
-  --sidebar-raised: #102551;
-  --sidebar-active: #1B3672;
-  --sidebar-text: #CAD6EE;
-  --sidebar-label: #8EA2CC;
-  --highlight: #FFC24B;
+  --sidebar-bg: #0B2E2B;
+  --sidebar-raised: #123F3B;
+  --sidebar-active: #17504B;
+  --sidebar-text: #C7E3DE;
+  --sidebar-label: #86B3AC;
+  --highlight: #F5A524;
+  --highlight-ink: #0B2E2B;
 
-  --primary: #2453E0;
-  --primary-hover: #1A3EB0;
-  --primary-soft: #E7EEFF;
-  --primary-border: #C3D3FF;
+  --primary: #0D7A6C;
+  --primary-hover: #08594F;
+  --primary-soft: #E1F3EF;
+  --primary-border: #B5DDD5;
+  --on-primary: #FFFFFF;
 
-  --bg: #F4F5FA;
+  --bg: #F2F6F5;
   --surface: #FFFFFF;
-  --surface-muted: #F7F8FC;
-  --border: #E6E8F0;
-  --border-soft: #EEF0F6;
-  --input-border: #D5D8E4;
-  --text: #12152B;
-  --text-muted: #5A6178;
+  --surface-muted: #F6F9F8;
+  --border: #E1E8E6;
+  --border-soft: #EAF0EE;
+  --input-border: #C9D6D3;
+  --text: #102523;
+  --text-muted: #55655F;
 
-  --success: #12A877;  --success-text: #0B7A55;  --success-soft: #E6F7F0;
+  --success: #16A34A;  --success-text: #15803D;  --success-soft: #E8F7EC;
   --danger: #E5484D;   --danger-text: #B4173A;   --danger-soft: #FDECEF;  --danger-border: #F3C2CC;
   --warning: #D9480F;  --warning-text: #B03A08;  --warning-soft: #FFF1E8;
   --caution: #E0A100;  --caution-text: #8A5A00;  --caution-soft: #FFF6DB;
-  --info: #0EA5A4;     --info-text: #0F766E;     --info-soft: #E0F5F3;
-  --equity: #7B61FF;   --equity-text: #5B3FE0;   --equity-soft: #EEEBFF;
+  --info: #2563EB;     --info-text: #1D4ED8;     --info-soft: #E8F0FF;
+  --equity: #7B61FF;   --equity-text: #4326D9;   --equity-soft: #EEEBFF;
 
-  /* Light-on-navy accents for the dark "hero" KPI card. */
-  --mint: #5EE6B5;
+  --overlay: rgba(11, 46, 43, 0.62);
+
+  /* Light accents for the dark "hero" cards: income figures and the light-on-dark red. */
+  --mint: #4ADE80;
+  --on-dark-danger: #FF8C9B;
 }
 
 :root[data-theme='dark'],
 body.dark-mode {
-  --bg: #0B1220;
-  --surface: #121A2E;
-  --surface-muted: #17213A;
-  --border: #22304F;
-  --border-soft: #1C2742;
-  --input-border: #2B3A5C;
-  --text: #E6ECF8;
-  --text-muted: #9AA8C7;
-  --primary: #5B82FF;
-  --primary-hover: #7C9BFF;
-  --primary-soft: #1B2A55;
-  --primary-border: #2E4485;
+  --bg: #0A1715;
+  --surface: #10211E;
+  --surface-muted: #152A27;
+  --border: #1F3A36;
+  --border-soft: #19302C;
+  --input-border: #2A4A45;
+  --text: #E3EFEC;
+  --text-muted: #94ADA7;
+  --primary: #2BB3A0;
+  --primary-hover: #4CC7B5;
+  --primary-soft: #143B36;
+  --primary-border: #23544D;
+  --on-primary: #0A1715;
 
-  --success-text: #4FDDAA;  --success-soft: color-mix(in srgb, var(--success) 15%, transparent);
+  --success-text: #4ADE80;  --success-soft: color-mix(in srgb, var(--success) 15%, transparent);
   --danger-text: #FF8C9B;   --danger-soft: color-mix(in srgb, var(--danger) 15%, transparent);  --danger-border: #6B2A3A;
   --warning-text: #FF9F6E;  --warning-soft: color-mix(in srgb, var(--warning) 15%, transparent);
   --caution-text: #F5C75A;  --caution-soft: color-mix(in srgb, var(--caution) 15%, transparent);
-  --info-text: #4FD6D4;     --info-soft: color-mix(in srgb, var(--info) 15%, transparent);
+  --info-text: #7FA8FF;     --info-soft: color-mix(in srgb, var(--info) 15%, transparent);
   --equity-text: #A897FF;   --equity-soft: color-mix(in srgb, var(--equity) 15%, transparent);
 
   /* Dark surfaces for the screens still drawn with the slate scale. */
-  --color-slate-800: #17213A;
-  --color-slate-900: #121A2E;
-  --color-slate-950: #0B1220;
+  --color-slate-800: #152A27;
+  --color-slate-900: #10211E;
+  --color-slate-950: #0A1715;
 }
 
 @theme inline {
@@ -79,11 +85,13 @@ body.dark-mode {
   --color-sidebar-text: var(--sidebar-text);
   --color-sidebar-label: var(--sidebar-label);
   --color-highlight: var(--highlight);
+  --color-highlight-ink: var(--highlight-ink);
 
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
   --color-primary-soft: var(--primary-soft);
   --color-primary-border: var(--primary-border);
+  --color-on-primary: var(--on-primary);
 
   --color-bg: var(--bg);
   --color-surface: var(--surface);
@@ -114,6 +122,8 @@ body.dark-mode {
   --color-equity-text: var(--equity-text);
   --color-equity-soft: var(--equity-soft);
   --color-mint: var(--mint);
+  --color-on-dark-danger: var(--on-dark-danger);
+  --color-overlay: var(--overlay);
 }
 
 @theme {
@@ -121,51 +131,51 @@ body.dark-mode {
   --font-display: 'Sora', 'DM Sans', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
 
-  /* Violet is the brand colour across the existing screens - now the primary blue. */
-  --color-violet-50: #F1F5FF;
-  --color-violet-100: #E7EEFF;
-  --color-violet-200: #C3D3FF;
-  --color-violet-300: #9DB5FF;
-  --color-violet-400: #7C9BFF;
-  --color-violet-500: #5B82FF;
-  --color-violet-600: #2453E0;
-  --color-violet-700: #1A3EB0;
-  --color-violet-800: #16348F;
-  --color-violet-900: #142C72;
-  --color-violet-950: #0A1A3A;
+  /* Violet is the brand colour across the existing screens - now the primary teal. */
+  --color-violet-50: #EEF8F6;
+  --color-violet-100: #E1F3EF;
+  --color-violet-200: #B5DDD5;
+  --color-violet-300: #86C7BB;
+  --color-violet-400: #4FAE9F;
+  --color-violet-500: #138A79;
+  --color-violet-600: #0D7A6C;
+  --color-violet-700: #08594F;
+  --color-violet-800: #074A42;
+  --color-violet-900: #063D37;
+  --color-violet-950: #0B2E2B;
 
   /* Indigo / fuchsia accents read as the same primary family. */
-  --color-indigo-50: #F1F5FF;
-  --color-indigo-100: #E7EEFF;
-  --color-indigo-200: #C3D3FF;
-  --color-indigo-300: #9DB5FF;
-  --color-indigo-400: #7C9BFF;
-  --color-indigo-500: #2453E0;
-  --color-indigo-600: #2453E0;
-  --color-indigo-700: #1A3EB0;
+  --color-indigo-50: #EEF8F6;
+  --color-indigo-100: #E1F3EF;
+  --color-indigo-200: #B5DDD5;
+  --color-indigo-300: #86C7BB;
+  --color-indigo-400: #4FAE9F;
+  --color-indigo-500: #0D7A6C;
+  --color-indigo-600: #0D7A6C;
+  --color-indigo-700: #08594F;
 
-  /* Neutrals - navy-tinted greys. */
-  --color-slate-50: #F7F8FC;
-  --color-slate-100: #EEF0F6;
-  --color-slate-200: #E6E8F0;
-  --color-slate-300: #D5D8E4;
-  --color-slate-400: #8A91A8;
-  --color-slate-500: #5A6178;
-  --color-slate-600: #474E66;
-  --color-slate-700: #343A52;
-  --color-slate-800: #22273F;
-  --color-slate-900: #12152B;
-  --color-slate-950: #0A0D1C;
+  /* Neutrals - teal-tinted greys. */
+  --color-slate-50: #F6F9F8;
+  --color-slate-100: #EAF0EE;
+  --color-slate-200: #E1E8E6;
+  --color-slate-300: #C9D6D3;
+  --color-slate-400: #86968F;
+  --color-slate-500: #55655F;
+  --color-slate-600: #44534E;
+  --color-slate-700: #33423D;
+  --color-slate-800: #1F302C;
+  --color-slate-900: #102523;
+  --color-slate-950: #081614;
 
   /* Status scales. */
-  --color-emerald-50: #E6F7F0;
-  --color-emerald-100: #CCF0E2;
-  --color-emerald-200: #9FE2C8;
-  --color-emerald-300: #5EE6B5;
-  --color-emerald-400: #2FC892;
-  --color-emerald-500: #12A877;
-  --color-emerald-600: #0E9167;
-  --color-emerald-700: #0B7A55;
+  --color-emerald-50: #E8F7EC;
+  --color-emerald-100: #CDEFD8;
+  --color-emerald-200: #A3E2B6;
+  --color-emerald-300: #4ADE80;
+  --color-emerald-400: #22C55E;
+  --color-emerald-500: #16A34A;
+  --color-emerald-600: #15803D;
+  --color-emerald-700: #15803D;
 
   --color-rose-50: #FDECEF;
   --color-rose-100: #FBDCE2;
@@ -192,7 +202,7 @@ body.dark-mode {
   --color-amber-700: #8A5A00;
 
   --shadow-card: none;
-  --shadow-lift: 0 12px 32px -16px rgb(10 26 58 / 0.28);
+  --shadow-lift: 0 12px 32px -16px rgb(11 46 43 / 0.28);
 
   --animate-fade-up: fade-up 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
   --animate-float: float 6s ease-in-out infinite;
@@ -292,7 +302,7 @@ main [class~='rounded-2xl'][class~='border'][class~='bg-white'] {
 /* Slim scrollbars inside the app. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgb(138 145 168 / 0.45) transparent;
+  scrollbar-color: rgb(134 150 143 / 0.45) transparent;
 }
 
 .scrollbar-none {
@@ -308,7 +318,7 @@ main [class~='rounded-2xl'][class~='border'][class~='bg-white'] {
   background: var(--bg);
 }
 
-/* The navy navigation rail (also the landing-page hero). */
+/* The dark-teal navigation rail (also the landing-page hero). */
 .nav-rail {
   background: var(--sidebar-bg);
 }
@@ -335,12 +345,12 @@ main [class~='rounded-2xl'][class~='border'][class~='bg-white'] {
   position: fixed;
   inset: 0;
   z-index: 9998;
-  background: rgba(10, 26, 58, 0.45);
+  background: rgba(11, 46, 43, 0.45);
   pointer-events: none;
 }
 
 .flatpickr-calendar.calendar-sheet {
-  box-shadow: 0 -8px 40px -8px rgba(10, 26, 58, 0.35) !important;
+  box-shadow: 0 -8px 40px -8px rgba(11, 46, 43, 0.35) !important;
 }
 
 .flatpickr-calendar .dayContainer,

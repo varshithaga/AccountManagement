@@ -11,7 +11,7 @@ purchases are expensed when the bill is posted, as before.
 """
 from datetime import date
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import case, delete, func, select
 from sqlalchemy.orm import Session
@@ -19,7 +19,8 @@ from sqlalchemy.orm import Session
 from ..models import (
     CreditNote, ItemType, NoteKind, Product, PurchaseBill, SalesInvoice, StockMovement, StockMovementKind, User,
 )
-from ..utils import ZERO, q2
+from ..errors import APIError
+from ..utils import ZERO, page_params, page_response, q2
 from . import period_close
 
 QTY = Decimal('0.001')
@@ -146,8 +147,12 @@ def stock_summary(db: Session, as_of: Optional[date] = None, search: str = '') -
             'below_reorder_level': low, 'negative': sum(1 for i in items if i['negative'])}
 
 
-def movements(db: Session, product: Product, date_from: Optional[date] = None, date_to: Optional[date] = None) -> dict:
-    """A product's movements, oldest first, with the running stock."""
+def movements(db: Session, product: Product, date_from: Optional[date] = None, date_to: Optional[date] = None,
+              page: Any = None, limit: Any = None) -> dict:
+    """A product's movements, oldest first, with the running stock. With `page` (1, 2, ... or "last") only
+    that page of rows is returned, plus the usual count / next / previous / total_pages; the balance column
+    still runs from the opening, and opening / closing are for the whole range."""
+    total = lambda stmt: Decimal(str(db.scalar(select(func.coalesce(func.sum(stmt.c.quantity), 0)).select_from(stmt))))
     opening = ZERO
     if date_from:
         opening = Decimal(str(db.scalar(select(func.coalesce(func.sum(StockMovement.quantity), 0))
@@ -157,8 +162,27 @@ def movements(db: Session, product: Product, date_from: Optional[date] = None, d
         stmt = stmt.where(StockMovement.date >= date_from)
     if date_to:
         stmt = stmt.where(StockMovement.date <= date_to)
-    running, rows = opening, []
-    for m in db.scalars(stmt.order_by(StockMovement.date, StockMovement.id)):
+    stmt = stmt.order_by(StockMovement.date, StockMovement.id)
+    quantities = stmt.with_only_columns(StockMovement.quantity)
+    closing = opening + total(quantities.subquery())
+
+    paging = None
+    running = opening
+    if page is not None:
+        number, size = page_params(page, limit, default_size=50)
+        count = db.scalar(select(func.count()).select_from(quantities.order_by(None).subquery())) or 0
+        total_pages = max(1, -(-count // size))
+        number = total_pages if number == -1 else number
+        if number > total_pages:
+            raise APIError(404, {"detail": "Invalid page."})
+        offset = (number - 1) * size
+        running += total(quantities.limit(offset).subquery()) if offset else ZERO  # what earlier pages moved
+        stmt = stmt.offset(offset).limit(size)
+        paging = page_response([], count, number, size)
+        del paging['results']
+
+    rows = []
+    for m in db.scalars(stmt):
         running += m.quantity
         doc = None
         if m.sales_invoice_id:
@@ -174,7 +198,7 @@ def movements(db: Session, product: Product, date_from: Optional[date] = None, d
                      'unit_cost': m.unit_cost, 'note': m.note, 'document': doc, 'balance': running,
                      'created_by': m.created_by.username if m.created_by else None})
     return {'product': {'id': product.id, 'name': product.name, 'unit': product.unit},
-            'opening': opening, 'closing': running, 'rows': rows}
+            'opening': opening, 'closing': closing, 'rows': rows, **(paging or {})}
 
 
 def can_track(product: Product) -> bool:

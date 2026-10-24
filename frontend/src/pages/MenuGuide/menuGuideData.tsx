@@ -299,7 +299,7 @@ export const SINGLE_ROLE_MENU: DemoGroup[] = [
         label: 'GST Summary',
         icon: <Percent className="h-4 w-4" />,
         desc: 'Output GST, input tax credit and the net GST payable - split CGST, SGST and IGST.',
-        explanation: 'For any period, the GST Summary adds up the GST on posted sales invoices (output tax) and posted purchase bills (input tax credit), less credit and debit notes in the period, and shows what is payable for each of CGST, SGST and IGST. Tabs break it down by rate, by B2B (clients with a GSTIN) and B2C, by HSN / SAC code and document by document - the figures you need for GSTR-1 and GSTR-3B. Drafts and cancelled documents are left out. Exports to CSV.',
+        explanation: 'For any period, the GST Summary adds up the GST on posted sales invoices (output tax) and posted purchase bills (input tax credit), less credit and debit notes in the period, and shows what is payable for each of CGST, SGST and IGST. Tabs break it down by rate, by B2B (clients with a GSTIN) and B2C, by HSN / SAC code and document by document - the figures you need for GSTR-1 and GSTR-3B. Drafts and cancelled documents are left out. Exports to CSV. The GST returns panel downloads GSTR-1 and GSTR-3B for a month as the JSON file the GST offline tool takes, and lists what to fix first (missing HSN codes, invalid GSTINs, drafts not posted); check the 3B input credit against GSTR-2B before filing.',
         examplesTitle: 'GST for September 2026',
         requiresPage: 'gst_summary',
       },

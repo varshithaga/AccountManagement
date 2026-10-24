@@ -24,11 +24,11 @@ const LIGHT_CLASSES: Record<BadgeColor, string> = {
 }
 
 const SOLID_CLASSES: Record<BadgeColor, string> = {
-  primary: 'bg-primary text-white',
+  primary: 'bg-primary text-on-primary',
   secondary: 'bg-ink text-surface',
-  success: 'bg-success text-white',
-  error: 'bg-danger text-white',
-  warning: 'bg-warning text-white',
+  success: 'bg-emerald-700 text-white',
+  error: 'bg-rose-700 text-white',
+  warning: 'bg-orange-700 text-white',
   info: 'bg-info text-white',
   default: 'bg-ink text-surface',
 }

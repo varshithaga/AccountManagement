@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
-import RequirePage, { HomeRedirect } from './components/RequirePage'
+import RequirePage, { HomeRedirect, RequireTestingTools } from './components/RequirePage'
 import AuthPage from './pages/AuthPage'
 import NotFoundPage from './pages/NotFoundPage'
 
@@ -92,7 +92,7 @@ export default function App() {
             <Route path="/tds-summary" element={<RequirePage page="tds_summary"><TdsSummaryPage /></RequirePage>} />
             <Route path="/users" element={<RequirePage page="user_management"><UserManagementPage /></RequirePage>} />
             <Route path="/audit-log" element={<RequirePage page="audit_log"><AuditLogPage /></RequirePage>} />
-            <Route path="/testing/delete-month-journals" element={<RequirePage page="journal_entries"><DeleteMonthJournalsPage /></RequirePage>} />
+            <Route path="/testing/delete-month-journals" element={<RequireTestingTools><DeleteMonthJournalsPage /></RequireTestingTools>} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>

@@ -382,7 +382,7 @@ function SummaryCard({ summary, activeIssue, onIssueClick }: {
             disabled={!summary.issue_counts[k]}
             onClick={() => onIssueClick(k)}
             className={`rounded-lg border px-2.5 py-1 font-bold transition-colors disabled:cursor-default disabled:opacity-50 ${activeIssue === k
-              ? 'border-danger-border bg-rose-500 text-white'
+              ? 'border-danger-border bg-rose-700 text-white'
               : 'border-border text-ink hover:border-danger-border hover:bg-danger-soft dark:hover:bg-danger-soft'}`}
           >
             {ISSUE_LABEL[k]} <span className="ml-1 opacity-80">{summary.issue_counts[k]}</span>

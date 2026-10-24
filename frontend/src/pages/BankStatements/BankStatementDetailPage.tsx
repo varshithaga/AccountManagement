@@ -848,7 +848,7 @@ export default function BankStatementDetailPage() {
                               type="button"
                               onClick={() => handleConfirmOne(t)}
                               title="Confirm this category choice"
-                              className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-emerald-700 shadow-sm"
+                              className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-bold text-on-primary hover:bg-primary-hover shadow-sm"
                             >
                               Confirm
                             </button>

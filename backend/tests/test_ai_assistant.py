@@ -120,6 +120,24 @@ def test_tool_query_is_limited():
     assert len(ai.result_text({"rows": list(range(100))})) < 400  # long lists are cut
 
 
+def test_every_tool_endpoint_answers(admin):
+    """Each tool's path and query are ones its endpoint accepts (wrong ones would 404 / 400 / 422)."""
+    gl = admin.get("/api/lookups/subcategories/", params={"search": "Bank Accounts"}).json()
+    gl = (gl["results"] if isinstance(gl, dict) else gl)[0]["id"]
+    bank = admin.post("/api/bank-accounts/", json={"name": "Main", "bank_name": "HDFC", "gl_account": gl}).json()["id"]
+    args = {"bank_reconciliation": {"account": bank}, "reconciliation_months": {"account": bank},
+            "unmatched_bank_transactions": {"account": bank}, "unmatched_book_lines": {"account": bank},
+            "gstr1": {"month": "2026-04"}, "gstr3b": {"month": "2026-04"},
+            "period_close_readiness": {"as_of": "2026-03-31"}, "account_ledger": {"sub_category": gl},
+            "compare_periods": {"a_period": "this_month", "b_period": "last_month"}}
+    for tool in ai.TOOLS:
+        r = admin.get(tool.path, params=ai._query(tool, {"period": "this_year", **args.get(tool.name, {})}))
+        if tool.name in ("gstr1", "gstr3b") and r.status_code == 400:  # no GSTIN set yet - a real answer
+            assert "GSTIN" in r.text
+            continue
+        assert r.status_code == 200, f"{tool.name}: {r.status_code} {r.text[:300]}"
+
+
 def _user_with_role(admin, username, pages):
     admin.post("/api/auth/register/", json={"username": username, "password": "Another-pass1"})
     role = admin.post("/api/roles/", json={"name": f"{username} role", "pages": pages})

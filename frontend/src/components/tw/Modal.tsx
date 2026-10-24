@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
 
-/** Navy & Saffron dialog: navy overlay, 24px-radius card, icon tile + Sora title, scrolling body, footer bar. */
+/** Deep Teal & Amber dialog: dark-teal overlay, 24px-radius card, icon tile + Sora title, scrolling body, footer bar. */
 export function Modal({
   open, onClose, title, subtitle, icon, children, footer, footerHint, widthClassName = 'max-w-md',
 }: {
@@ -19,8 +19,8 @@ export function Modal({
 }) {
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(10,26,58,0.62)] p-4" role="dialog" aria-modal="true">
-      <div className={`flex max-h-[calc(100dvh-2rem)] w-full ${widthClassName} flex-col overflow-hidden rounded-[24px] border border-border bg-surface shadow-[0_32px_80px_-20px_rgb(10_26_58/0.5)]`}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-overlay p-4" role="dialog" aria-modal="true">
+      <div className={`flex max-h-[calc(100dvh-2rem)] w-full ${widthClassName} flex-col overflow-hidden rounded-[24px] border border-border bg-surface shadow-[0_32px_80px_-20px_rgb(11_46_43/0.5)]`}>
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border-soft px-6 py-5">
           <div className="flex min-w-0 items-center gap-3.5">
             {icon && (

@@ -7,6 +7,9 @@
     python cli.py create-admin <username>     create a superuser (asks for the password)
     python cli.py seed                        add the starter Chart of Accounts, GST rates, sample bank accounts
                                               and the standard BAI codes (only adds what is missing)
+    python cli.py demo-data                   fill the books with sample clients, invoices, bills, payments and bank
+                                              statements - with planted duplicates - to try the app out
+                                              (needs seed and an administrator first; never on live books)
     python cli.py run-recurring               raise every recurring invoice that has fallen due, in every company
                                               (the server also does this every RECURRING_CHECK_MINUTES)
     python cli.py backup [--keep N]           back up every company's database and uploaded files to BACKUP_DIR
@@ -17,7 +20,7 @@ Several companies (each with a database of its own - users, accounts, invoices, 
                                               add a company; its database is created and migrated (default: the
                                               main database's name + _<key>, on the same server)
     python cli.py companies                   list the companies
-    seed and create-admin take --company <key> (default: the main company)
+    seed, demo-data and create-admin take --company <key> (default: the main company)
 """
 import getpass
 import sys
@@ -61,7 +64,7 @@ def main(argv: list[str]) -> int:
         return _list_companies()
     if command == "create-company":
         return _create_company(args)
-    if command not in ("migrate", "init-db", "seed", "create-admin"):
+    if command not in ("migrate", "init-db", "seed", "demo-data", "create-admin"):
         print(f"Unknown command: {command}\n{__doc__}")
         return 1
 
@@ -86,6 +89,8 @@ def main(argv: list[str]) -> int:
         if command == "seed":
             print("Chart of Accounts:", seed_chart_of_accounts(db))
             print("BAI codes:", seed_bai_codes(db))
+        elif command == "demo-data":
+            return _demo_data(company)
         elif command == "create-admin":
             if not args:
                 print("Usage: python cli.py create-admin <username> [--company <key>]")
@@ -104,6 +109,25 @@ def main(argv: list[str]) -> int:
                         role_id=admin_role.id if admin_role else None))
             db.commit()
             print(f'Administrator "{username}" created in company "{company}".')
+    return 0
+
+
+def _demo_data(company: str) -> int:
+    from app.services.demo_data import DemoDataError, load_demo_data
+
+    try:
+        result = load_demo_data(company)
+    except DemoDataError as exc:
+        print(exc)
+        return 1
+    print(f'Sample data added to company "{company}":')
+    for what, n in result["added"].items():
+        print(f"  {n:>3} {what}")
+    print("Planted duplicates:")
+    print(f"  {result['duplicate_bank_rows_flagged']} bank rows flagged as possible duplicates (Bank Statements)")
+    print(f"  near-duplicate clients: {result['near_duplicate_client']}")
+    for line in result["refused"]:
+        print(f"  {line}")
     return 0
 
 

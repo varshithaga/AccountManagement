@@ -1,15 +1,15 @@
 import type { ReactNode } from 'react'
 import type { Tone } from './types'
 
-/** Navy & Saffron buttons. Blue is for actions; green and red only where the action itself is
- * good / destructive. "outlined" is the white bordered secondary button (red-tinted for error,
+/** Deep Teal & Amber buttons. Teal is for actions - green is never a button colour (too close to
+ * teal), so "success" buttons are teal too; red only where the action itself is destructive. "outlined" is the white bordered secondary button (red-tinted for error,
  * orange for warning); "text" is the quiet link-style button. */
 const SECONDARY = 'border border-border bg-surface text-ink hover:bg-surface-muted'
 const LINK = 'text-primary hover:bg-primary-soft'
 
 export const BTN: Record<Tone, { solid: string; outline: string; text: string }> = {
   primary: {
-    solid: 'bg-primary text-white hover:bg-primary-hover',
+    solid: 'bg-primary text-on-primary hover:bg-primary-hover',
     outline: SECONDARY,
     text: LINK,
   },
@@ -19,17 +19,17 @@ export const BTN: Record<Tone, { solid: string; outline: string; text: string }>
     text: LINK,
   },
   success: {
-    solid: 'bg-success text-white hover:brightness-95',
-    outline: 'border border-border bg-surface text-success-text hover:bg-success-soft',
-    text: 'text-success-text hover:bg-success-soft',
+    solid: 'bg-primary text-on-primary hover:bg-primary-hover',
+    outline: SECONDARY,
+    text: LINK,
   },
   error: {
-    solid: 'bg-danger text-white hover:brightness-95',
+    solid: 'bg-rose-700 text-white hover:brightness-95',
     outline: 'border border-danger-border bg-surface text-danger-text hover:bg-danger-soft',
     text: 'text-danger-text hover:bg-danger-soft',
   },
   warning: {
-    solid: 'bg-warning text-white hover:brightness-95',
+    solid: 'bg-orange-700 text-white hover:brightness-95',
     outline: 'border border-border bg-surface text-warning-text hover:bg-warning-soft',
     text: 'text-warning-text hover:bg-warning-soft',
   },

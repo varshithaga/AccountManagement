@@ -479,7 +479,7 @@ export default function MenuGuidePage() {
                         type="button"
                         onClick={handleSimulateUpload}
                         disabled={isSimulating}
-                        className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-white shadow-md transition-all disabled:opacity-50"
+                        className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-on-primary shadow-md transition-all disabled:opacity-50"
                       >
                         {isSimulating ? (
                           <>

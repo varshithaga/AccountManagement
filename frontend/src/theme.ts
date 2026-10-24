@@ -1,17 +1,17 @@
 export const appThemeColors = {
   light: {
-    primary: '#7c3aed',
-    secondary: '#0ea5e9',
-    background: '#f8fafc',
+    primary: '#0D7A6C',
+    secondary: '#F5A524',
+    background: '#F2F6F5',
     surface: '#ffffff',
-    text: '#0f172a',
+    text: '#102523',
   },
   dark: {
-    primary: '#a78bfa',
-    secondary: '#38bdf8',
-    background: '#0b0f19',
-    surface: '#111827',
-    text: '#f8fafc',
+    primary: '#2BB3A0',
+    secondary: '#F5A524',
+    background: '#0A1715',
+    surface: '#10211E',
+    text: '#E3EFEC',
   },
 }
 

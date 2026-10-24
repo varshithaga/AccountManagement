@@ -14,6 +14,8 @@ copy .env.example .env           # then set SECRET_KEY (32+ characters)
 
 python cli.py init-db            # apply migrations + default roles (Admin, Accountant, Bookkeeper, Viewer)
 python cli.py seed               # optional: starter Chart of Accounts, GST rates, BAI codes, sample banks
+python cli.py demo-data          # optional, for trying it out (after registering the admin): sample clients,
+                                 # invoices, bills, payments, stock and bank statements - with planted duplicates
 uvicorn app.main:app --reload    # http://127.0.0.1:8000/docs
 ```
 
@@ -124,7 +126,7 @@ run them there - every test drops and recreates the tables).
 - **Payments** `payments/` (+ `{id}/allocate/`, `{id}/allocations/{allocation_id}/`)
 - **Credit / debit notes** `credit-notes/` (+ `{id}/cancel/`)
 - **Reconciliation** `reconciliation/summary|bank-transactions|book-lines|auto-match|match|match-pair|unmatch|candidates|opening-balance|periods|periods/close|periods/reopen|settings/`
-- **Reports** `reports/profit-and-loss|balance-sheet|trial-balance|cash-flow|account-ledger|comparison|comparison/export|financial-pack|line-item-transactions|receivables-aging|payables-aging|gst-summary/`
+- **Reports** `reports/profit-and-loss|balance-sheet|trial-balance|cash-flow|account-ledger|comparison|comparison/export|financial-pack|line-item-transactions|receivables-aging|payables-aging|gst-summary/`, `reports/gst-returns/gstr1|gstr3b/?month=YYYY-MM`
 - **Period close** `period-close/` (financial year, default receivable / payable / cash accounts, company details), `period-close/readiness|close|reopen|company/`
 - **Audit log** `audit-log/` (+ `filters/`)
 - **AI Assistant** `ai/status/`, `ai/chat/`, `ai/conversations/` (+ `{id}/`)
@@ -180,6 +182,15 @@ output / input account. So one "GST Payable" account works, and separate ledgers
 `reports/gst-summary/` adds up posted documents for a period: output tax by rate, B2B / B2C, within /
 across states, an HSN / SAC summary, input tax credit (lines whose tax rate has no input account are
 shown as ineligible) and the net payable per component.
+
+`reports/gst-returns/gstr1/` and `gstr3b/` build one month's return (`?month=2026-09`) as the JSON the GST
+portal's offline tool takes, plus warnings to fix first (missing HSN codes, bad GSTINs, drafts left out);
+`?format=json` downloads the file alone. The company GSTIN must be set. Not recorded in LedgerDesk, so sent
+as zero: cess, exports / SEZ, reverse charge, advances, amendments. The 3B input tax credit is what the books
+claim - check it against GSTR-2B. Code: `app/services/gst_returns.py`.
+
+The Testing menu (Delete Month Journals, `journal-entries/month-scope|month-delete/`) only works with
+`TESTING_TOOLS=true` in `.env`, and only for administrators.
 
 ## Audit log
 

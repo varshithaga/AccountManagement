@@ -16,6 +16,8 @@ export interface AuthUser {
   /** What the role may change on each page; a page that's missing is view only. */
   actions: RoleActions
   date_joined: string
+  /** True when the server has TESTING_TOOLS on and the user is an administrator. */
+  testing_tools?: boolean
   /** The company signed in to - each one's books are separate. */
   company?: { key: string; name: string }
 }

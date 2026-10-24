@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-5-mini"
     ai_timeout_seconds: int = 60
 
+    # Testing tools (Delete Month Journals: wipes a bank's journal entries for a month or for all
+    # time). Off by default; when on, only administrators can use them. Keep off on live books.
+    testing_tools: bool = False
+
     @field_validator("secret_key")
     @classmethod
     def _not_placeholder(cls, value: str) -> str:

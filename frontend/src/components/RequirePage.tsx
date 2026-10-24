@@ -33,6 +33,23 @@ export default function RequirePage({ page, children }: { page: PageKey; childre
   )
 }
 
+/** The testing tools: only for administrators, and only while the server has TESTING_TOOLS on. */
+export function RequireTestingTools({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
+  if (user?.testing_tools) return children
+  return (
+    <Notice icon={<ShieldAlert className="h-7 w-7" />} title="Testing tools are turned off">
+      <p>
+        These tools can delete journal entries in bulk, so they are only for administrators and only while
+        TESTING_TOOLS is set to true in backend/.env.
+      </p>
+      <Link to="/" className="mt-4 inline-block font-bold text-violet-700 hover:underline dark:text-violet-300">
+        Go to my home page
+      </Link>
+    </Notice>
+  )
+}
+
 /** "/" - sends the user to the first page their role opens. */
 export function HomeRedirect() {
   const { hasPage } = useAuth()

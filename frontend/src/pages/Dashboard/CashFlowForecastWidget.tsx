@@ -53,7 +53,7 @@ export default function CashFlowForecastWidget({ data }: { data: DashboardCashFl
 
   const toggleBtn = (on: boolean) =>
     `h-9 whitespace-nowrap rounded-[9px] px-3.5 text-[13px] font-semibold transition-colors ${
-      on ? 'bg-surface text-ink shadow-[0_1px_2px_rgb(10_26_58/0.08)] ring-1 ring-border' : 'text-muted hover:text-ink'
+      on ? 'bg-surface text-ink shadow-[0_1px_2px_rgb(11_46_43/0.08)] ring-1 ring-border' : 'text-muted hover:text-ink'
     }`
 
   return (
@@ -150,7 +150,7 @@ export default function CashFlowForecastWidget({ data }: { data: DashboardCashFl
                           {item.is_forecast && <span className="text-[0.65rem] font-normal text-sidebar-label">(Forecast)</span>}
                         </div>
                         <div className="num text-mint">In: {formatAmount(item.inflow)}</div>
-                        <div className="num text-[#FF8C9B]">Out: {formatAmount(item.outflow)}</div>
+                        <div className="num text-on-dark-danger">Out: {formatAmount(item.outflow)}</div>
                         <div className="num mt-0.5 font-semibold text-white">Net: {formatAmount(item.net)}</div>
                       </div>
                     )}

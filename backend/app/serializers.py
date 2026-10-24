@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .access import is_admin, role_actions, user_actions, user_pages
+from .config import get_settings
 from .models import (
     BaiCode, BankAccount, BankStatement, Category, CategoryKeyword, Client, JournalEntry, JournalEntryLine,
     JournalImportBatch, Payment, Product, PurchaseBill, ReconciliationMatch, Role, SalesInvoice, SubCategory,
@@ -48,6 +49,7 @@ def current_user(u: User) -> dict:
         'id': u.id, 'username': u.username, 'first_name': u.first_name, 'last_name': u.last_name,
         'email': u.email, 'role_name': u.role.name if u.role else None, 'is_admin': is_admin(u),
         'pages': user_pages(u), 'actions': user_actions(u), 'date_joined': iso(u.date_joined),
+        'testing_tools': get_settings().testing_tools and is_admin(u),
     }
 
 

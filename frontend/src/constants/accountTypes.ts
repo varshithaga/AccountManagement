@@ -18,7 +18,7 @@ export function categoryLabelWithType(c: { name: string; account_type: AccountTy
   return `${c.name} (${ACCOUNT_TYPE_LABEL[c.account_type] || c.account_type})`
 }
 
-/** Navy & Saffron account-type colours: Asset teal, Liability amber, Equity violet,
+/** Deep Teal & Amber account-type colours: Asset blue, Liability amber, Equity violet,
  * Income green, Expense red - badge (soft bg + strong text), dot / bar fill, and tile. */
 export const ACCOUNT_TYPE_STYLE: Record<AccountType, { badge: string; dot: string; tile: string }> = {
   ASSET: { badge: 'bg-info-soft text-info-text', dot: 'bg-info', tile: 'bg-info-soft text-info-text' },

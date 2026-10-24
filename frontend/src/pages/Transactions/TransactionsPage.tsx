@@ -886,7 +886,7 @@ ${res.no_gl_account} can't be posted - their bank account has no GL account.` : 
                                 type="button"
                                 onClick={() => handleAcceptSuggestion(t)}
                                 disabled={acceptingId === t.id}
-                                className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[0.7rem] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                                className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-[0.7rem] font-bold text-on-primary hover:bg-primary-hover disabled:opacity-50"
                               >
                                 <Check className="h-3 w-3" />
                                 Accept
@@ -950,7 +950,7 @@ ${res.no_gl_account} can't be posted - their bank account has no GL account.` : 
                               type="button"
                               onClick={() => handleConfirmOne(t)}
                               title="Confirm this category choice"
-                              className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-xs font-bold text-white hover:bg-emerald-700 shadow-sm"
+                              className="inline-flex items-center gap-1 rounded-lg bg-primary px-2 py-1 text-xs font-bold text-on-primary hover:bg-primary-hover shadow-sm"
                             >
                               <Check className="h-3 w-3" /> Confirm
                             </button>

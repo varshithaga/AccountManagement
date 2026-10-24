@@ -177,10 +177,10 @@ export function DatePicker2({
       style.textContent = `
         /* 1. Main Popup Container */
         .flatpickr-calendar.custom-datepicker-popup {
-          background: #f4f4f7 !important;
+          background: var(--surface-muted) !important;
           border-radius: 24px !important;
-          border: 1px solid rgba(226, 232, 240, 0.8) !important;
-          box-shadow: 0 20px 30px -10px rgba(0, 0, 0, 0.1), 0 10px 15px -5px rgba(0, 0, 0, 0.05) !important;
+          border: 1px solid var(--border) !important;
+          box-shadow: 0 20px 30px -10px rgba(11, 46, 43, 0.1), 0 10px 15px -5px rgba(11, 46, 43, 0.05) !important;
           padding: 18px !important;
           width: 328px !important;
           font-family: inherit !important;
@@ -189,9 +189,9 @@ export function DatePicker2({
 
         .dark .flatpickr-calendar.custom-datepicker-popup,
         body.dark-mode .flatpickr-calendar.custom-datepicker-popup {
-          background: #0f172a !important;
-          border-color: rgba(255, 255, 255, 0.12) !important;
-          box-shadow: 0 20px 30px -10px rgba(0, 0, 0, 0.6) !important;
+          background: var(--surface) !important;
+          border-color: var(--border) !important;
+          box-shadow: 0 20px 30px -10px rgba(11, 46, 43, 0.6) !important;
         }
 
         .flatpickr-calendar.custom-datepicker-popup::before,
@@ -222,9 +222,9 @@ export function DatePicker2({
           width: 38px !important;
           height: 38px !important;
           border-radius: 50% !important;
-          background: #ffffff !important;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06) !important;
-          color: #0f172a !important;
+          background: var(--surface) !important;
+          box-shadow: 0 2px 6px rgba(11, 46, 43, 0.06) !important;
+          color: var(--text) !important;
           padding: 0 !important;
           transition: all 0.15s ease !important;
           margin: 0 !important;
@@ -233,16 +233,16 @@ export function DatePicker2({
 
         .flatpickr-calendar.custom-datepicker-popup .flatpickr-prev-month:hover,
         .flatpickr-calendar.custom-datepicker-popup .flatpickr-next-month:hover {
-          background: #ffffff !important;
+          background: var(--surface) !important;
           transform: scale(1.05) !important;
-          color: #2563eb !important;
+          color: var(--primary) !important;
         }
 
         .dark .flatpickr-calendar.custom-datepicker-popup .flatpickr-prev-month,
         .dark .flatpickr-calendar.custom-datepicker-popup .flatpickr-next-month {
-          background: #1e293b !important;
-          color: #f8fafc !important;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+          background: var(--surface-muted) !important;
+          color: var(--text) !important;
+          box-shadow: 0 2px 6px rgba(11, 46, 43, 0.3) !important;
         }
 
         .flatpickr-calendar.custom-datepicker-popup .flatpickr-prev-month svg,
@@ -272,19 +272,19 @@ export function DatePicker2({
           padding: 0 !important;
           font-size: 15px !important;
           font-weight: 800 !important;
-          color: #0f172a !important;
+          color: var(--text) !important;
         }
 
         /* Styling Month Dropdown & Year Input as rounded white card badges with blue indicator */
         .flatpickr-calendar.custom-datepicker-popup .flatpickr-monthDropdown-months {
-          background: #ffffff !important;
+          background: var(--surface) !important;
           border-radius: 12px !important;
           padding: 6px 14px !important;
           font-weight: 800 !important;
           font-size: 15px !important;
-          color: #0f172a !important;
+          color: var(--text) !important;
           border: none !important;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05) !important;
+          box-shadow: 0 2px 6px rgba(11, 46, 43, 0.05) !important;
           outline: none !important;
           cursor: pointer !important;
           appearance: none !important;
@@ -297,19 +297,19 @@ export function DatePicker2({
         }
 
         .dark .flatpickr-calendar.custom-datepicker-popup .flatpickr-monthDropdown-months {
-          background: #1e293b !important;
-          color: #ffffff !important;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+          background: var(--surface-muted) !important;
+          color: var(--text) !important;
+          box-shadow: 0 2px 6px rgba(11, 46, 43, 0.3) !important;
         }
 
         .flatpickr-calendar.custom-datepicker-popup .numInputWrapper {
-          background: #ffffff !important;
+          background: var(--surface) !important;
           border-radius: 12px !important;
           padding: 6px 14px !important;
           font-weight: 800 !important;
           font-size: 15px !important;
-          color: #0f172a !important;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05) !important;
+          color: var(--text) !important;
+          box-shadow: 0 2px 6px rgba(11, 46, 43, 0.05) !important;
           display: inline-flex !important;
           align-items: center !important;
           position: relative !important;
@@ -318,15 +318,15 @@ export function DatePicker2({
         }
 
         .dark .flatpickr-calendar.custom-datepicker-popup .numInputWrapper {
-          background: #1e293b !important;
-          color: #ffffff !important;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+          background: var(--surface-muted) !important;
+          color: var(--text) !important;
+          box-shadow: 0 2px 6px rgba(11, 46, 43, 0.3) !important;
         }
 
         .flatpickr-calendar.custom-datepicker-popup .numInputWrapper input.cur-year {
           font-weight: 800 !important;
           font-size: 15px !important;
-          color: #0f172a !important;
+          color: var(--text) !important;
           border: none !important;
           background: transparent !important;
           padding: 0 !important;
@@ -335,7 +335,7 @@ export function DatePicker2({
         }
 
         .dark .flatpickr-calendar.custom-datepicker-popup .numInputWrapper input.cur-year {
-          color: #ffffff !important;
+          color: var(--text) !important;
         }
 
         .flatpickr-calendar.custom-datepicker-popup .numInputWrapper .arrowUp,
@@ -350,7 +350,7 @@ export function DatePicker2({
           height: 0 !important;
           border-left: 4px solid transparent !important;
           border-right: 4px solid transparent !important;
-          border-bottom: 6px solid #0052FF !important;
+          border-bottom: 6px solid var(--primary) !important;
           margin-left: 6px !important;
         }
 
@@ -363,11 +363,11 @@ export function DatePicker2({
         .flatpickr-calendar.custom-datepicker-popup span.flatpickr-weekday {
           font-weight: 700 !important;
           font-size: 13px !important;
-          color: #334155 !important;
+          color: var(--text-muted) !important;
         }
 
         .dark .flatpickr-calendar.custom-datepicker-popup span.flatpickr-weekday {
-          color: #94a3b8 !important;
+          color: var(--text-muted) !important;
         }
 
         /* 4. Day Cells Grid */
@@ -391,12 +391,12 @@ export function DatePicker2({
           max-width: 36px !important;
           line-height: 36px !important;
           border-radius: 10px !important;
-          background-color: #ffffff !important;
-          border: 1px solid rgba(226, 232, 240, 0.6) !important;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+          background-color: var(--surface) !important;
+          border: 1px solid var(--border-soft) !important;
+          box-shadow: 0 1px 3px rgba(11, 46, 43, 0.04) !important;
           font-weight: 700 !important;
           font-size: 14px !important;
-          color: #0f172a !important;
+          color: var(--text) !important;
           margin: 0 !important;
           display: flex !important;
           align-items: center !important;
@@ -405,10 +405,10 @@ export function DatePicker2({
         }
 
         .dark .flatpickr-calendar.custom-datepicker-popup .flatpickr-day {
-          background-color: #1e293b !important;
-          border-color: rgba(255, 255, 255, 0.06) !important;
-          color: #f1f5f9 !important;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+          background-color: var(--surface-muted) !important;
+          border-color: var(--border-soft) !important;
+          color: var(--text) !important;
+          box-shadow: 0 1px 3px rgba(11, 46, 43, 0.2) !important;
         }
 
         /* Prev / Next Month Days (Greyed out, no white box) */
@@ -418,21 +418,21 @@ export function DatePicker2({
           background-color: transparent !important;
           border: none !important;
           box-shadow: none !important;
-          color: #cbd5e1 !important;
+          color: color-mix(in srgb, var(--text-muted) 45%, transparent) !important;
           font-weight: 600 !important;
         }
 
         .dark .flatpickr-calendar.custom-datepicker-popup .flatpickr-day.prevMonthDay,
         .dark .flatpickr-calendar.custom-datepicker-popup .flatpickr-day.nextMonthDay,
         .dark .flatpickr-calendar.custom-datepicker-popup .flatpickr-day.flatpickr-disabled {
-          color: #475569 !important;
+          color: color-mix(in srgb, var(--text-muted) 45%, transparent) !important;
         }
 
         /* Hover state */
         .flatpickr-calendar.custom-datepicker-popup .flatpickr-day:hover:not(.selected):not(.prevMonthDay):not(.nextMonthDay) {
-          background-color: #eff6ff !important;
-          border-color: #bfdbfe !important;
-          color: #1d4ed8 !important;
+          background-color: var(--primary-soft) !important;
+          border-color: var(--primary-border) !important;
+          color: var(--primary-hover) !important;
           transform: translateY(-1px) !important;
         }
 
@@ -440,25 +440,25 @@ export function DatePicker2({
         .flatpickr-calendar.custom-datepicker-popup .flatpickr-day.selected,
         .flatpickr-calendar.custom-datepicker-popup .flatpickr-day.startRange,
         .flatpickr-calendar.custom-datepicker-popup .flatpickr-day.endRange {
-          background-color: #0052FF !important;
+          background-color: var(--primary) !important;
           color: #ffffff !important;
           border: none !important;
-          box-shadow: 0 4px 12px rgba(0, 82, 255, 0.35) !important;
+          box-shadow: 0 4px 12px rgba(13, 122, 108, 0.35) !important;
           font-weight: 800 !important;
         }
 
         /* Preferred / Highlighted Day (Soft Blue Filled Card matching day '7' in reference image) */
         .flatpickr-calendar.custom-datepicker-popup .flatpickr-day.preferred-day:not(.selected) {
-          background-color: #dbeafe !important;
-          color: #1d4ed8 !important;
-          border: 1px solid #bfdbfe !important;
+          background-color: var(--primary-soft) !important;
+          color: var(--primary-hover) !important;
+          border: 1px solid var(--primary-border) !important;
           font-weight: 800 !important;
         }
 
         .dark .flatpickr-calendar.custom-datepicker-popup .flatpickr-day.preferred-day:not(.selected) {
-          background-color: rgba(37, 99, 235, 0.3) !important;
-          color: #93c5fd !important;
-          border-color: rgba(59, 130, 246, 0.4) !important;
+          background-color: var(--primary-soft) !important;
+          color: var(--primary) !important;
+          border-color: var(--primary-border) !important;
         }
       `
       document.head.appendChild(style)

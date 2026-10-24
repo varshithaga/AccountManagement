@@ -313,7 +313,7 @@ export default function ImportExcelDialog<T>({
               <div className={`h-1 rounded ${done ? 'bg-success' : current ? 'bg-primary' : 'bg-border-soft'}`} />
               <div className="flex items-center gap-2">
                 <span className={`num flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-                  done ? 'bg-success text-white' : current ? 'bg-primary text-white' : 'border border-input text-muted'
+                  done ? 'bg-emerald-700 text-white' : current ? 'bg-primary text-white' : 'border border-input text-muted'
                 }`}>
                   {done ? <Check className="h-3.5 w-3.5" /> : i + 1}
                 </span>
@@ -398,7 +398,7 @@ export default function ImportExcelDialog<T>({
             dragOver ? 'border-primary bg-primary-soft' : 'border-primary-border bg-primary-soft/40 hover:bg-primary-soft'
           }`}
         >
-          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-surface text-primary shadow-[0_1px_2px_rgb(10_26_58/0.08)]">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-surface text-primary shadow-[0_1px_2px_rgb(11_46_43/0.08)]">
             <UploadCloud className="h-6 w-6 stroke-[1.8]" />
           </span>
           <p className="text-sm font-semibold text-ink">

@@ -2,11 +2,12 @@
 drill-downs, and receivables / payables aging."""
 import csv
 import io
+import json
 from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from ..access import user_pages
@@ -15,6 +16,7 @@ from ..deps import Access
 from ..errors import APIError, bad_request, forbidden
 from ..models import JournalEntryLine, User
 from ..services.gst import gst_summary
+from ..services.gst_returns import GstReturnError, gstr1, gstr3b
 from ..services.tds import tds_summary
 from ..services.invoicing import aging_report
 from ..services.reports import (
@@ -242,6 +244,24 @@ def gst_summary_report(request: Request, db: Session = Depends(get_db), format: 
                  for d in report["documents"]]
         return _csv(f"gst_summary_{period}.csv", rows)
     return report
+
+
+@router.get("/gst-returns/{form}/", dependencies=[Depends(Access("gst_summary"))])
+def gst_return(form: str, month: str = "", format: Optional[str] = None, db: Session = Depends(get_db)):
+    """GSTR-1 or GSTR-3B (form = gstr1 / gstr3b) for ?month=YYYY-MM: {"return": ..., "warnings": [...]}.
+    ?format=json downloads the return alone, as the JSON file the GST portal's offline tool takes."""
+    builders = {"gstr1": gstr1, "gstr3b": gstr3b}
+    if form not in builders:
+        raise APIError(404, {"detail": "Unknown return - use gstr1 or gstr3b."})
+    try:
+        result = builders[form](db, month)
+    except GstReturnError as exc:
+        raise bad_request(str(exc))
+    if format == "json":
+        filename = f"{form.upper()}_{result['return']['gstin']}_{month}.json"
+        return Response(json.dumps(result["return"], indent=2), media_type="application/json",
+                        headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+    return result
 
 
 @router.get("/tds-summary/", dependencies=[Depends(Access("tds_summary"))])

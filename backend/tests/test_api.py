@@ -548,3 +548,27 @@ def test_opening_balances_are_booked(admin):
     assert admin.get("/api/journal-entries/", params={"search": f"OB-C-{c['id']}"}).json()["count"] == 0
     assert admin.delete(f"/api/suppliers/{s['id']}/").status_code == 204
     assert admin.get("/api/journal-entries/", params={"source": "OPENING_BALANCE"}).json()["count"] == 0
+
+
+def test_testing_tools_locked(admin, monkeypatch):
+    from app.config import get_settings
+    bank = _bank(admin)
+    scope = {"bank_account": bank["id"], "month": "all", "include_ledger": False}
+    # Off by default: nobody - not even an administrator - can bulk-delete journal entries.
+    assert admin.get("/api/auth/me/").json()["testing_tools"] is False
+    assert admin.get("/api/journal-entries/month-scope/", params=scope).status_code == 404
+    assert admin.post("/api/journal-entries/month-delete/", json=scope).status_code == 404
+
+    monkeypatch.setattr(get_settings(), "testing_tools", True)
+    assert admin.get("/api/auth/me/").json()["testing_tools"] is True
+    assert admin.get("/api/journal-entries/month-scope/", params=scope).status_code == 200
+    # A non-admin with full Journal Entries rights still cannot use them.
+    admin.post("/api/auth/register/", json={"username": "clerk2", "password": "Another-pass1"})
+    role = admin.post("/api/roles/", json={"name": "Journals", "pages": ["journal_entries"],
+                                           "actions": {"journal_entries": ["create", "edit", "delete"]}}).json()
+    clerk = next(u for u in admin.get("/api/users/").json()["results"] if u["username"] == "clerk2")
+    assert admin.patch(f"/api/users/{clerk['id']}/", json={"role": role["id"]}).status_code == 200
+    token = admin.post("/api/auth/token/", json={"username": "clerk2", "password": "Another-pass1"}).json()["access"]
+    headers = {"Authorization": f"Bearer {token}"}
+    assert admin.get("/api/auth/me/", headers=headers).json()["testing_tools"] is False
+    assert admin.post("/api/journal-entries/month-delete/", json=scope, headers=headers).status_code == 403

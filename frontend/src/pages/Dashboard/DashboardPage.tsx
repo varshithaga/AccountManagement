@@ -57,8 +57,8 @@ const TONE: Record<'success' | 'danger' | 'warning' | 'caution' | 'info' | 'prim
   primary: { soft: 'bg-primary-soft', text: 'text-primary' },
 }
 
-/** Account-share colours on the navy cash card. */
-const SHARE_COLORS = ['bg-mint', 'bg-highlight', 'bg-[#7C9BFF]', 'bg-[#4FD6D4]', 'bg-[#C9B8FF]', 'bg-[#FF9F6E]']
+/** Account-share colours on the dark-teal cash card. */
+const SHARE_COLORS = ['bg-mint', 'bg-highlight', 'bg-[#7FA8FF]', 'bg-[#5FD4C2]', 'bg-[#C9B8FF]', 'bg-[#FF9F6E]']
 
 /** "Sep 2026", "Jul – Sep 2026" for whole months, otherwise "05 Sep – 14 Sep 2026". */
 function rangeLabel(from: string, to: string): string {
@@ -408,7 +408,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* 2. KPI CARDS - cash first, on navy */}
+      {/* 2. KPI CARDS - cash first, on dark teal */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className="flex flex-col rounded-[18px] bg-sidebar p-6 text-white">
           <div className="flex items-center justify-between gap-3">
@@ -417,7 +417,7 @@ export default function DashboardPage() {
               <Wallet className="h-[18px] w-[18px] stroke-[1.8]" />
             </span>
           </div>
-          <div className={`num mt-3 text-[28px] font-semibold leading-tight ${cashBalance < 0 ? 'text-[#FF8C9B]' : 'text-white'}`}>
+          <div className={`num mt-3 text-[28px] font-semibold leading-tight ${cashBalance < 0 ? 'text-on-dark-danger' : 'text-white'}`}>
             {formatAmount(cashBalance)}
           </div>
           <p className="mt-1 text-xs text-sidebar-label">

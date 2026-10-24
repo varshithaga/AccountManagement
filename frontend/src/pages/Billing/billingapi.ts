@@ -474,6 +474,16 @@ export const gstApi = {
     (await api.get('/reports/gst-summary/', { params, signal })).data,
   exportCsv: async (params: GstParams): Promise<Blob> =>
     (await api.get('/reports/gst-summary/', { params: { ...params, format: 'csv' }, responseType: 'blob' })).data,
+  /** GSTR-1 / GSTR-3B for a month ("YYYY-MM"), in the GST portal's offline-tool JSON layout, with what to fix first. */
+  gstReturn: async (form: GstReturnForm, month: string): Promise<GstReturn> =>
+    (await api.get(`/reports/gst-returns/${form}/`, { params: { month } })).data,
+}
+
+export type GstReturnForm = 'gstr1' | 'gstr3b'
+
+export interface GstReturn {
+  return: { gstin: string } & Record<string, unknown>
+  warnings: string[]
 }
 
 export interface TdsSectionRow {
@@ -552,15 +562,20 @@ export interface StockMovement {
 
 export interface ProductMovements {
   product: { id: number; name: string; unit: string }
+  /** For the whole date range, not just this page. */
   opening: number
   closing: number
+  /** One page; each row's balance still runs from the opening. */
   rows: StockMovement[]
+  count: number
+  current_page: number
+  total_pages: number
 }
 
 export const inventoryApi = {
   stock: async (params: { as_of?: string; search?: string } = {}, signal?: AbortSignal): Promise<StockSummary> =>
     (await api.get('/inventory/', { params, signal })).data,
-  movements: async (productId: number, params: { date_from?: string; date_to?: string } = {}): Promise<ProductMovements> =>
+  movements: async (productId: number, params: { date_from?: string; date_to?: string; page?: number; limit?: number } = {}): Promise<ProductMovements> =>
     (await api.get(`/inventory/${productId}/movements/`, { params })).data,
   /** Opening stock (opening: true) or a correction after a count / damage (+ or -). */
   adjust: async (payload: { product: number; quantity: string; movement_date?: string; unit_cost?: string | null; note?: string; opening?: boolean }): Promise<ProductMovements & { id: number }> =>

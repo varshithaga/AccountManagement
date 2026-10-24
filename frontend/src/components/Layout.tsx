@@ -12,8 +12,9 @@ import { useAuth } from '../context/AuthContext'
 import { ALL_PAGES, PAGE_GROUPS, type PageKey } from '../access/pages'
 import { useThemeMode } from '../context/ThemeModeContext'
 import { Spinner } from './tw'
+import { LogoMark } from './Logo'
 
-/* Navy & Saffron shell (design tokens in index.css). */
+/* Deep Teal & Amber shell (design tokens in index.css). */
 
 const DRAWER_WIDTH = 248
 
@@ -76,9 +77,10 @@ const GROUP_LABEL: Record<string, string> = {
   Administration: 'Admin',
 }
 
-/** Testing-only tools - not role pages of their own; shown to whoever has Journal Entries. */
+/** Testing-only tools - not role pages of their own; shown only to administrators while the server has
+ * TESTING_TOOLS on (they can wipe a bank's journal entries). */
 const TESTING_PAGES = [
-  { label: 'Delete Month Journals', path: '/testing/delete-month-journals', needs: 'journal_entries' as PageKey },
+  { label: 'Delete Month Journals', path: '/testing/delete-month-journals' },
 ]
 
 const NAV_PATHS = ALL_PAGES.map((p) => p.path)
@@ -130,7 +132,7 @@ export default function Layout() {
       items: group.pages.filter((p) => hasPage(p.key)).map((p) => ({ label: p.label, path: p.path, icon: PAGE_ICONS[p.key] })),
     }))
     .filter((group) => group.items.length > 0)
-  const testingItems = TESTING_PAGES.filter((p) => hasPage(p.needs))
+  const testingItems = (user?.testing_tools ? TESTING_PAGES : [])
     .map((p) => ({ label: p.label, path: p.path, icon: <FlaskConical className={ICON} /> }))
   if (testingItems.length) navGroups.push({ title: 'Testing', items: testingItems })
 
@@ -138,8 +140,8 @@ export default function Layout() {
     <div className="flex h-full flex-col bg-sidebar px-4 pb-4 pt-6 text-sidebar-text">
       {/* Brand */}
       <div className="flex items-center gap-3 px-1 pb-5">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-white">
-          <BarChart3 className="h-5 w-5 stroke-[2]" />
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-on-primary">
+          <LogoMark className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
           <p className="font-display text-lg font-bold leading-tight text-white">LedgerDesk</p>
@@ -227,7 +229,7 @@ export default function Layout() {
           onClick={() => setMobileOpen(false)}
           className="flex min-w-0 flex-1 items-center gap-3 rounded-[10px] p-1 transition hover:bg-white/[0.05]"
         >
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-highlight text-xs font-bold text-sidebar">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-highlight text-xs font-bold text-highlight-ink">
             {initials}
           </div>
           <div className="min-w-0 flex-1">
@@ -252,7 +254,7 @@ export default function Layout() {
   )
 
   return (
-    <div className="min-h-screen bg-[#F4F5FA] dark:bg-[#0B1220]">
+    <div className="min-h-screen bg-bg">
       {/* Top bar */}
       <header className="fixed top-0 z-30 flex h-[73px] w-full items-center justify-between gap-3 border-b border-border bg-surface px-4 md:pl-[288px] md:pr-10">
         <div className="flex min-w-0 items-center gap-3">
@@ -293,7 +295,7 @@ export default function Layout() {
               title="Account"
               className="flex h-11 items-center gap-2.5 rounded-xl border border-border bg-surface pl-1.5 pr-2.5 transition-colors hover:bg-surface-muted"
             >
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-highlight text-xs font-bold text-sidebar">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-highlight text-xs font-bold text-highlight-ink">
                 {initials}
               </div>
               <div className="hidden text-left sm:block">
@@ -358,7 +360,7 @@ export default function Layout() {
       {/* Mobile slide-in drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
-          <div className="fixed inset-0 bg-[rgba(10,26,58,0.62)]" onClick={() => setMobileOpen(false)} />
+          <div className="fixed inset-0 bg-overlay" onClick={() => setMobileOpen(false)} />
           <aside style={{ width: DRAWER_WIDTH }} className="fixed bottom-0 left-0 top-0 z-50 h-full shadow-2xl">
             {sidebarContent}
           </aside>

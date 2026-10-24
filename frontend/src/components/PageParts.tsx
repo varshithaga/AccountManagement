@@ -1,4 +1,4 @@
-/** Navy & Saffron page building blocks shared by every screen: the page header, KPI tiles,
+/** Deep Teal & Amber page building blocks shared by every screen: the page header, KPI tiles,
  * the search box and the empty state. */
 import type { ReactNode } from 'react'
 import { Search, X } from 'lucide-react'
@@ -45,7 +45,7 @@ export function IconTile({ tone = 'primary', children, className = '' }: { tone?
   )
 }
 
-/** KPI card: label + icon tile, a big mono value, then a caption. `dark` is the navy hero variant. */
+/** KPI card: label + icon tile, a big mono value, then a caption. `dark` is the dark-teal hero variant. */
 export function KpiTile({ label, value, caption, icon, tone = 'primary', dark = false, valueClassName = '', children }: {
   label: ReactNode
   value: ReactNode
