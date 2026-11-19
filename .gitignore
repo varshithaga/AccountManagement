@@ -70,3 +70,6 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Walkthrough video in docs/ (other .mp4 files stay ignored)
+!docs/walkthrough.mp4

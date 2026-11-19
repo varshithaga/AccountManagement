@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LedgerDesk Walkthrough</title>
+<style>
+  :root { --teal:#2bb5a0; --deep:#0b2b27; --accent:#f5b33b; --bg:#0a1513; --panel:#10221f; --ink:#e6f2ef; --muted:#9bb8b2; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: radial-gradient(circle at 50% 0%, #123a34, var(--bg));
+    color: var(--ink); font-family: "Segoe UI", system-ui, sans-serif;
+    display: flex; flex-direction: column; min-height: 100vh;
+  }
+  header { padding: 14px 22px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid rgba(255,255,255,.1); }
+  header h1 { font-size: 17px; margin: 0; font-weight: 800; }
+  header h1 span { color: var(--accent); }
+  .count { margin-left: auto; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  main { flex: 1; display: flex; align-items: center; justify-content: center; padding: 22px 16px; position: relative; overflow: hidden; }
+  figure { margin: 0; width: min(1200px, 100%); background: var(--panel); border: 1px solid rgba(255,255,255,.12);
+    border-radius: 14px; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,.5); }
+  .frame { max-height: 68vh; overflow: auto; background: #07100e; }
+  .frame img { display: block; width: 100%; }
+  figcaption { padding: 12px 18px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px;
+    border-top: 1px solid rgba(255,255,255,.1); background: linear-gradient(var(--deep), #0c1f1c); }
+  figcaption b { font-size: 15px; }
+  figcaption span { font-size: 13px; color: var(--muted); }
+  .nav { position: absolute; top: 50%; transform: translateY(-50%); border: none; background: rgba(11,43,39,.85);
+    color: #fff; font-size: 22px; width: 46px; height: 46px; border-radius: 50%; cursor: pointer; }
+  .nav:hover { background: var(--teal); }
+  .nav.prev { left: 26px; } .nav.next { right: 26px; }
+  @media (max-width: 700px) { .nav { display: none; } .hint { display: none; } }
+  footer { padding: 12px 22px; display: flex; align-items: center; gap: 14px; border-top: 1px solid rgba(255,255,255,.1); font-size: 13px; }
+  button.ctl { border: 1px solid rgba(255,255,255,.22); background: transparent; color: var(--ink); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  button.ctl:hover { border-color: var(--teal); background: rgba(43,181,160,.2); }
+  .bar { flex: 1; height: 4px; background: rgba(255,255,255,.14); border-radius: 2px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--teal); transition: width .25s; }
+  .hint { color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>LedgerDesk <span>Pro Suite</span>: full application walkthrough</h1>
+  <div class="count"><span id="idx">1</span> / <span id="total"></span></div>
+</header>
+
+<main>
+  <button class="nav prev" id="prev" aria-label="Previous">&#8249;</button>
+  <figure>
+    <div class="frame"><img id="shot" alt="" /></div>
+    <figcaption><b id="title"></b><span id="sub"></span></figcaption>
+  </figure>
+  <button class="nav next" id="next" aria-label="Next">&#8250;</button>
+</main>
+
+<footer>
+  <button class="ctl" id="play">Pause</button>
+  <div class="bar"><i id="fill"></i></div>
+  <span class="hint">&#8592; &#8594; to navigate &middot; Space to play/pause</span>
+</footer>
+
+<script>
+const SLIDES = [
+  ["01-login", "Sign in", "Username + password, company picker when there are several companies"],
+  ["02-signup", "Sign up", "The first account becomes the administrator"],
+  ["03-dashboard", "Dashboard", "Income, expenses, profit, cash, sales & GST this month, cash-flow forecast, items needing attention"],
+  ["04-workflow", "Workflow", "Every step of the process, marked Done / To do / Needs attention from live data"],
+  ["05-bank-accounts", "Bank Accounts", "Bank accounts linked to their GL account for posting and reconciliation"],
+  ["06-bank-statements", "Bank Statements", "Upload CSV / Excel / PDF statements; balances and possible duplicates checked"],
+  ["07-statement-continuity", "Statement Continuity", "Gaps, overlaps and balance mismatches between statements"],
+  ["08-transactions", "General Ledger", "Categorize bank transactions (auto-suggested), then Make Final to post them"],
+  ["09-journal-entries", "Journal Entries", "The double-entry books: manual entries, Excel / JSON import, posted entries"],
+  ["10-bank-reconciliation", "Bank Reconciliation", "Auto-match bank rows to journal lines, match the rest, close the month"],
+  ["11-categories", "Chart of Accounts", "Categories and sub-categories with their account types"],
+  ["12-category-keywords", "Auto-Categorization Rules", "Keywords that steer bank narrations to the right account"],
+  ["13-clients", "Clients", "GSTIN, state, payment terms, opening balance, party statement"],
+  ["14-suppliers", "Suppliers", "Supplier master with default TDS section"],
+  ["15-products", "Products & Tax Rates", "HSN / SAC, prices, GST rate, stock tracking; GST rates and TDS sections"],
+  ["16-sales-invoices", "Sales Invoices", "Draft → Post → receipts; PDF, print, email, credit notes"],
+  ["17-purchase-bills", "Purchase Bills", "Supplier bills with input GST and TDS; debit notes"],
+  ["18-payments", "Payments & Receipts", "Money in and out, allocated to invoices and bills"],
+  ["19-recurring-invoices", "Recurring Invoices", "Monthly / quarterly / yearly templates raised automatically"],
+  ["20-inventory", "Inventory", "Stock on hand, average cost, value, low-stock and negative flags"],
+  ["21-receivables-payables", "Receivables & Payables", "Aging buckets and ready-made payment reminders"],
+  ["22-gst-summary", "GST Summary", "CGST / SGST / IGST output, input credit, GSTR-1 and GSTR-3B JSON"],
+  ["23-tds-summary", "TDS Summary", "TDS by section and supplier, paid and outstanding"],
+  ["24-profit-and-loss", "Profit & Loss", "Income minus expenses by category, Excel export"],
+  ["25-balance-sheet", "Balance Sheet", "Assets = liabilities + equity, with a balance check"],
+  ["26-trial-balance", "Trial Balance", "Every account's debit or credit balance"],
+  ["27-cash-flow", "Cash Flow Statement", "Operating, investing and financing cash flows"],
+  ["28-account-ledger", "Account Ledger", "Every line on one account with running balance"],
+  ["29-reports-comparison", "Period Comparison", "Month-over-month / year-over-year side by side"],
+  ["30-period-close", "Period Close", "Lock the books through a date; company details and defaults"],
+  ["31-ai-assistant", "AI Assistant", "Read-only chat about the books (Gemini / OpenAI key needed)"],
+  ["32-users", "User Management", "Users, roles and per-page View / Create / Edit / Delete rights"],
+  ["33-audit-log", "Audit Log", "Who changed what and when, with old and new values"],
+  ["34-menu-guide", "Menu Guide", "A plain-English description of every screen"],
+];
+const DWELL = 3200;
+let i = 0, playing = true, t0 = 0, raf = null;
+const $ = (id) => document.getElementById(id);
+$("total").textContent = SLIDES.length;
+
+function render() {
+  const [file, title, sub] = SLIDES[i];
+  $("shot").src = "screenshots/" + file + ".jpg";
+  $("shot").alt = title;
+  $("title").textContent = title;
+  $("sub").textContent = sub;
+  $("idx").textContent = i + 1;
+  document.querySelector(".frame").scrollTop = 0;
+}
+function go(n) { i = (n + SLIDES.length) % SLIDES.length; render(); restart(); }
+function tick() {
+  if (!playing) return;
+  const p = Math.min(1, (performance.now() - t0) / DWELL);
+  $("fill").style.width = (p * 100) + "%";
+  if (p >= 1) { go(i + 1); return; }
+  raf = requestAnimationFrame(tick);
+}
+function restart() {
+  cancelAnimationFrame(raf);
+  t0 = performance.now();
+  $("fill").style.width = "0%";
+  if (playing) raf = requestAnimationFrame(tick);
+}
+function setPlay(v) { playing = v; $("play").textContent = v ? "Pause" : "Play"; restart(); }
+
+$("prev").onclick = () => go(i - 1);
+$("next").onclick = () => go(i + 1);
+$("play").onclick = () => setPlay(!playing);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowLeft") go(i - 1);
+  else if (e.key === "ArrowRight") go(i + 1);
+  else if (e.key === " ") { e.preventDefault(); setPlay(!playing); }
+});
+render();
+restart();
+</script>
+</body>
+</html>
